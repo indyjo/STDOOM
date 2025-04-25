@@ -99,7 +99,7 @@ boolean         fastparm;	// checkparm of -fast
 
 boolean         drone;
 
-boolean		singletics = false; // debug flag to cancel adaptiveness
+boolean		singletics = true; // debug flag to cancel adaptiveness
 
 
 
@@ -396,7 +396,8 @@ void D_DoomLoop (void)
 
 #ifndef SNDSERV
 	// Sound mixing for the buffer is snychronous.
-	I_UpdateSound();
+	// TODO Re-enable sound on ST
+	//I_UpdateSound();
 #endif	
 	// Synchronous sound output is explicitly called.
 #ifndef SNDINTR
@@ -609,9 +610,11 @@ void IdentifyVersion (void)
     sprintf(doom2fwad, "%s/doom2f.wad", doomwaddir);
 
     home = getenv("HOME");
-    if (!home)
-      I_Error("Please set $HOME to your home directory");
-    sprintf(basedefault, "%s/.doomrc", home);
+    if (home) {
+    	sprintf(basedefault, "%s/.doomrc", home);
+	} else {
+		sprintf(basedefault, "./.doomrc");
+	}
 #endif
 
     if (M_CheckParm ("-shdev"))

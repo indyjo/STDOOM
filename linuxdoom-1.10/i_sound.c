@@ -42,7 +42,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <sys/ioctl.h>
 
 // Linux voxware output.
-#include <linux/soundcard.h>
+//#include <linux/soundcard.h>
 
 // Timer stuff. Experimental.
 #include <time.h>
@@ -411,8 +411,8 @@ void I_SetChannels()
 
   // This table provides step widths for pitch parameters.
   // I fail to see that this is currently used.
-  for (i=-128 ; i<128 ; i++)
-    steptablemid[i] = (int)(pow(2.0, (i/64.0))*65536.0);
+  // for (i=-128 ; i<128 ; i++)
+  //   steptablemid[i] = (int)(pow(2.0, (i/64.0))*65536.0);
   
   
   // Generates volume lookup tables
@@ -761,12 +761,12 @@ I_InitSound()
   
 #ifdef SNDINTR
   fprintf( stderr, "I_SoundSetTimer: %d microsecs\n", SOUND_INTERVAL );
-  I_SoundSetTimer( SOUND_INTERVAL );
+  //I_SoundSetTimer( SOUND_INTERVAL );
 #endif
     
   // Secure and configure sound device first.
   fprintf( stderr, "I_InitSound: ");
-  
+  /*
   audio_fd = open("/dev/dsp", O_WRONLY);
   if (audio_fd<0)
     fprintf(stderr, "Could not open /dev/dsp\n");
@@ -789,7 +789,7 @@ I_InitSound()
     myioctl(audio_fd, SNDCTL_DSP_SETFMT, &i);
   else
     fprintf(stderr, "Could not play signed 16 data\n");
-
+  */
   fprintf(stderr, " configured audio device\n" );
 
     
@@ -940,39 +940,39 @@ void I_HandleSoundTimer( int ignore )
 // Get the interrupt. Set duration in millisecs.
 int I_SoundSetTimer( int duration_of_tick )
 {
-  // Needed for gametick clockwork.
-  struct itimerval    value;
-  struct itimerval    ovalue;
-  struct sigaction    act;
-  struct sigaction    oact;
+//   // Needed for gametick clockwork.
+//   struct itimerval    value;
+//   struct itimerval    ovalue;
+//   struct sigaction    act;
+//   struct sigaction    oact;
 
-  int res;
+//   int res;
   
-  // This sets to SA_ONESHOT and SA_NOMASK, thus we can not use it.
-  //     signal( _sig, handle_SIG_TICK );
+//   // This sets to SA_ONESHOT and SA_NOMASK, thus we can not use it.
+//   //     signal( _sig, handle_SIG_TICK );
   
-  // Now we have to change this attribute for repeated calls.
-  act.sa_handler = I_HandleSoundTimer;
-#ifndef sun    
-  //ac	t.sa_mask = _sig;
-#endif
-  act.sa_flags = SA_RESTART;
+//   // Now we have to change this attribute for repeated calls.
+//   act.sa_handler = I_HandleSoundTimer;
+// #ifndef sun    
+//   //ac	t.sa_mask = _sig;
+// #endif
+//   act.sa_flags = SA_RESTART;
   
-  sigaction( sig, &act, &oact );
+//   sigaction( sig, &act, &oact );
 
-  value.it_interval.tv_sec    = 0;
-  value.it_interval.tv_usec   = duration_of_tick;
-  value.it_value.tv_sec       = 0;
-  value.it_value.tv_usec      = duration_of_tick;
+//   value.it_interval.tv_sec    = 0;
+//   value.it_interval.tv_usec   = duration_of_tick;
+//   value.it_value.tv_sec       = 0;
+//   value.it_value.tv_usec      = duration_of_tick;
 
-  // Error is -1.
-  res = setitimer( itimer, &value, &ovalue );
+//   // Error is -1.
+//   res = setitimer( itimer, &value, &ovalue );
 
-  // Debug.
-  if ( res == -1 )
-    fprintf( stderr, "I_SoundSetTimer: interrupt n.a.\n");
+//   // Debug.
+//   if ( res == -1 )
+//     fprintf( stderr, "I_SoundSetTimer: interrupt n.a.\n");
   
-  return res;
+  return 0;
 }
 
 
@@ -980,6 +980,6 @@ int I_SoundSetTimer( int duration_of_tick )
 void I_SoundDelTimer()
 {
   // Debug.
-  if ( I_SoundSetTimer( 0 ) == -1)
-    fprintf( stderr, "I_SoundDelTimer: failed to remove interrupt. Doh!\n");
+  // if ( I_SoundSetTimer( 0 ) == -1)
+  //   fprintf( stderr, "I_SoundDelTimer: failed to remove interrupt. Doh!\n");
 }

@@ -65,12 +65,12 @@ void**			lumpcache;
 
 
 #define strcmpi	strcasecmp
-
+/*
 void strupr (char* s)
 {
     while (*s) { *s = toupper(*s); s++; }
 }
-
+*/
 int filelength (int handle) 
 { 
     struct stat	fileinfo;
@@ -202,9 +202,11 @@ void W_AddFile (char *filename)
 	numlumps += header.numlumps;
     }
 
-    
     // Fill in lumpinfo
     lumpinfo = realloc (lumpinfo, numlumps*sizeof(lumpinfo_t));
+printf("lumps: %d, size: %d, lumpinfo: %p \n", numlumps, numlumps*sizeof(lumpinfo_t), lumpinfo);
+printf("Press key\n"); fgetc(stdin);
+
 
     if (!lumpinfo)
 	I_Error ("Couldn't realloc lumpinfo");

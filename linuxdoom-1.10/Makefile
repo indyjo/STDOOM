@@ -4,17 +4,18 @@
 #
 # $Log:$
 #
-CC=  gcc  # gcc or g++
+#CC=  gcc  # gcc or g++
 
-CFLAGS=-g -Wall -DNORMALUNIX -DLINUX # -DUSEASM 
+CFLAGS=-O3 -g -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ # -DUSEASM 
 LDFLAGS=-L/usr/X11R6/lib
-LIBS=-lXext -lX11 -lnsl -lm
+#LIBS=-lXext -lX11 -lnsl -lm
 
 # subdirectory for objects
 O=linux
 
 # not too sophisticated dependency
 OBJS=				\
+		$(O)/atari_c2p.o		\
 		$(O)/doomdef.o		\
 		$(O)/doomstat.o		\
 		$(O)/dstrings.o		\
@@ -77,15 +78,15 @@ OBJS=				\
 		$(O)/info.o				\
 		$(O)/sounds.o
 
-all:	 $(O)/linuxxdoom
+all:	 $(O)/stdoom.tos
 
 clean:
 	rm -f *.o *~ *.flc
 	rm -f linux/*
 
-$(O)/linuxxdoom:	$(OBJS) $(O)/i_main.o
+$(O)/stdoom.tos:	$(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
-	-o $(O)/linuxxdoom $(LIBS)
+	-o $(O)/stdoom.tos $(LIBS)
 
 $(O)/%.o:	%.c
 	$(CC) $(CFLAGS) -c $< -o $@
