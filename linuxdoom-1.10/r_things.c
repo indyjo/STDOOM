@@ -207,7 +207,7 @@ void R_InitSpriteDefs (char** namelist)
     for (i=0 ; i<numsprites ; i++)
     {
 	spritename = namelist[i];
-        printf("Sprite %d: %s\n", i, spritename);
+        //printf("Sprite %d: %s\n", i, spritename);
 	memset (sprtemp,-1, sizeof(sprtemp));
 	maxframe = -1;
 	intname = *(int *)namelist[i];

@@ -39,7 +39,6 @@ void install_palette(unsigned short *palette) {
 }
 
 void init_c2p_table() {
-	Super(0L);
 #if USE_MIDRES
     unsigned short stpalette[] = {stcolor(0,0,0), stcolor(85,85,85), stcolor(170,170,170), stcolor(255,255,255)};
     install_palette(stpalette);

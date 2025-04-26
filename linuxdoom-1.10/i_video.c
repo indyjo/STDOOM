@@ -60,6 +60,11 @@ static int	lastmousey = 0;
 boolean		mousemoved = false;
 boolean		shmFinished;
 
+#define ACIA_RX_OVERRUN (1<<5)
+#define ACIA_RX_DATA    (1<<0)
+static volatile unsigned char *pAciaCtrl = (void*) 0xfffc00; 
+static volatile unsigned char *pAciaData = (void*) 0xfffc02; 
+
 //
 // I_StartTic
 //
@@ -67,12 +72,18 @@ void I_StartTic (void)
 {
     event_t event;
 
-    if (Bconstat(_CON)) {
-	long ch = Bconin(_CON);
-	event.type = ev_keydown;
-	long scan = (ch >> 16) & 0xff;
-	long mods = (ch >> 24) & 0xff;
-	printf("Got code %d scan:%d mods:%d\n", ch & 0xff, scan, mods);
+    unsigned char aciaCtrl = *pAciaCtrl;
+    if (aciaCtrl & ACIA_RX_OVERRUN) {
+        //printf("ACIA RX overrun detected.\n");
+        unsigned char aciaData = *pAciaData;
+        //printf("  Read byte %d to recover.\n", aciaData);
+    } else while (aciaCtrl & ACIA_RX_DATA) {
+        unsigned char aciaData = *pAciaData;
+        aciaCtrl = *pAciaCtrl;
+        //printf("Got byte from ACIA: %d (%s)- ctrl: %x\n", aciaData, (aciaData & 0x80) ? "release" : "press", aciaCtrl);
+        unsigned char scan = aciaData & 0x7f;
+        event.type = (aciaData & 0x80) ? ev_keyup : ev_keydown;
+        // Atari ST keyboard layout: https://temlib.org/AtariForumWiki/index.php/Atari_ST_Scancode_diagram_by_Unseen_Menace
 	if (scan == 75) {
 	    event.data1 = KEY_LEFTARROW;
 	} else if (scan == 77) {
@@ -81,16 +92,50 @@ void I_StartTic (void)
 	    event.data1 = KEY_UPARROW;
 	} else if (scan == 80) {
 	    event.data1 = KEY_DOWNARROW;
+        } else if (scan == 1) {
+            event.data1 = KEY_ESCAPE;
+        } else if (scan == 28) {
+            event.data1 = KEY_ENTER;
+        } else if (scan == 15) {
+            event.data1 = KEY_TAB;
+        } else if (scan >= 59 && scan <= 68) {
+            event.data1 = KEY_F1 + scan - 59;
+        } else if (scan == 0x62) { // Help key
+            event.data1 = KEY_F11;
+        } else if (scan == 0x61) { // Undo key
+            event.data1 = KEY_F12;
+        } else if (scan == 14) {
+            event.data1 = KEY_BACKSPACE;
+        } else if (scan == 12) {
+            event.data1 = KEY_MINUS;
+        } else if (scan == 13) {
+            event.data1 = KEY_EQUALS;
+        } else if (scan == 0x2a) {
+            event.data1 = KEY_RSHIFT;
+        } else if (scan == 0x1d) {
+            event.data1 = KEY_RCTRL;
+        } else if (scan == 0x38) {
+            event.data1 = KEY_RALT;
+        } else if (scan == 0x39) {
+            event.data1 = ' ';
+        } else if (scan >= 0x2 && scan <= 0xd) {
+            event.data1 = "1234567890-="[scan-0x2];
+        } else if (scan >= 0x10 && scan <= 0x1B) {
+            event.data1 = "qwertyuiop[]"[scan-0x10];
+        } else if (scan >= 0x1e && scan <= 0x29) {
+            event.data1 = "asdfghjkl;'`"[scan-0x1e];
+        } else if (scan == 0x2b) {
+            event.data1 = '#';
+        } else if (scan >= 0x2c && scan <= 0x35) {
+            event.data1 = "zxcvbnm,./"[scan-0x2c];
 	} else {
-	    event.data1 = ch & 0xff;
+	    event.data1 = 0;
+            printf("Unknown key code %d\n", aciaData);
 	}
-	D_PostEvent(&event);
-	event.type = ev_keyup;
-	D_PostEvent(&event);
+        if (event.data1 != 0) {
+            D_PostEvent(&event);
+        }
     }
-
-
-    // TODO: read IKBD and fill event struct fields, then call D_PostEvent(&event);
 
 }
 
@@ -155,8 +200,12 @@ void I_SetPalette (byte* palette)
 
 void I_InitGraphics(void)
 {
+    printf("Enabling supervisor mode.\n");
+    Super(0L);
     st_screen = Physbase();
-    printf ("Initializing c2p tables...\n");
+    printf("Disabling keyboard interrupt.n");
+    *pAciaCtrl = 0x16;
+    printf("Initializing c2p tables...\n");
     init_c2p_table();
 	unsigned char buf[256];
 	unsigned char c = 0;
@@ -168,6 +217,8 @@ void I_InitGraphics(void)
 		for (int i=0; i<8; i++) c2p(st_screen + 160*(y+i), buf, 128, i%4);
 	}
     printf ("Done.\n");
+    // Set cursor to home and stop blinking.
+    printf("\33H\33f\n");
 }
 
 

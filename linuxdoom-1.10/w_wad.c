@@ -204,8 +204,7 @@ void W_AddFile (char *filename)
 
     // Fill in lumpinfo
     lumpinfo = realloc (lumpinfo, numlumps*sizeof(lumpinfo_t));
-printf("lumps: %d, size: %d, lumpinfo: %p \n", numlumps, numlumps*sizeof(lumpinfo_t), lumpinfo);
-printf("Press key\n"); fgetc(stdin);
+    printf("lumps: %d, size: %d, lumpinfo: %p \n", numlumps, numlumps*sizeof(lumpinfo_t), lumpinfo);
 
 
     if (!lumpinfo)
