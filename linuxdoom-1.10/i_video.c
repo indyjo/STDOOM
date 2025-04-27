@@ -195,6 +195,7 @@ void I_ReadScreen (byte* scr)
 //
 void I_SetPalette (byte* palette)
 {
+    set_doom_palette(palette);
 }
 
 
