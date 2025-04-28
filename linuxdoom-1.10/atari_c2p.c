@@ -6,6 +6,9 @@
 // Set to 1 to use grayscale medium resolution (640x200) rendering.
 #define USE_MIDRES 0
 
+// Set to 1 or higher to drop small color contributions.
+#define DESPECKLE_THRESHOLD 0
+
 #if !USE_MIDRES
 static void move_p_ofs(unsigned char *p, unsigned int data, unsigned char ofs) {
 	asm ("movep.l %0, %c2(%1)" : : "d" (data), "a" (p), "i" (ofs));
@@ -299,6 +302,22 @@ void install_palette(unsigned short *palette) {
     for (short n=0; n<numColors; n++) *reg++ = *palette++;
 }
 
+#if !USE_MIDRES
+void adapt_weights(unsigned char *w) {
+    int sum = 0;
+    for (int i=0; i<16; i++) {
+        if (w[i] > DESPECKLE_THRESHOLD) sum += w[i];
+    }
+    int accum = 0;
+    for (int i=15; i>=0; i--) {
+        int last = accum;
+        if (w[i] > DESPECKLE_THRESHOLD) accum += w[i];
+        w[i] = 16 * accum / sum - 16 * last / sum;
+    }
+
+}
+#endif
+
 void init_c2p_table() {
 	unsigned short bayer[4][4] = {
 		{0,  8, 2,10},
@@ -357,6 +376,7 @@ void init_c2p_table() {
 #else
 	for (int i=0; i<256; i++) {
         unsigned char *weights = mix_weights[i];
+        adapt_weights(weights);
         for (int phase=0; phase<4; phase++) {
             for (int px=0; px<8; px++) {
                 // Find the ST palette color index to fill the pixel with.
