@@ -198,7 +198,7 @@ void I_SetPalette (byte* palette)
     set_doom_palette(palette);
 }
 
-
+extern const unsigned char subset[16];
 void I_InitGraphics(void)
 {
     printf("Enabling supervisor mode.\n");
@@ -208,14 +208,22 @@ void I_InitGraphics(void)
     *pAciaCtrl = 0x16;
     printf("Initializing c2p tables...\n");
     init_c2p_table();
-	unsigned char buf[256];
+	unsigned char buf[128+16];
 	unsigned char c = 0;
 	for (int y=0; y<128; y+=8) {
 		for (int x=0; x<128; x+=8) {
 			for (int i=0; i<8; i++) buf[x+i] = c;
+            for (int i=0; i<16; i++) {
+                if (c == subset[i]) {
+                    buf[x] = 4;
+                    buf[x+7] = 0;
+                }
+            }
 			c++;
 		}
-		for (int i=0; i<8; i++) c2p(st_screen + 160*(y+i), buf, 128, i%4);
+        for (int x=128; x<128+8; x++) buf[x] = 0;
+        for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
+		for (int i=0; i<8; i++) c2p(st_screen + 160*(32+y+i), buf, 128+16, i%4);
 	}
     printf ("Done.\n");
     // Set cursor to home and stop blinking.
