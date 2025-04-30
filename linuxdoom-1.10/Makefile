@@ -6,7 +6,7 @@
 #
 #CC=  gcc  # gcc or g++
 
-CFLAGS=-O3 -g -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ # -DUSEASM 
+CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ # -DUSEASM 
 LDFLAGS=-L/usr/X11R6/lib
 #LIBS=-lXext -lX11 -lnsl -lm
 

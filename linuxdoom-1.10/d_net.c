@@ -25,7 +25,6 @@
 
 static const char rcsid[] = "$Id: d_net.c,v 1.3 1997/02/03 22:01:47 b1 Exp $";
 
-
 #include "m_menu.h"
 #include "i_system.h"
 #include "i_video.h"
@@ -71,7 +70,7 @@ int		nodeforplayer[MAXPLAYERS];
 int             maketic;
 int		lastnettic;
 int		skiptics;
-int		ticdup;		
+int		ticdup = 1;		
 int		maxsend;	// BACKUPTICS/(2*ticdup)-1
 
 

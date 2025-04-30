@@ -23,7 +23,8 @@
 static const char
 rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
-
+#include <mint/osbind.h>
+#include <mint/sysvars.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -48,7 +49,7 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 
 
-int	mb_used = 6;
+int	ram_used = 39*1024*1025/16;
 
 
 void
@@ -70,12 +71,14 @@ ticcmd_t*	I_BaseTiccmd(void)
 
 int  I_GetHeapSize (void)
 {
-    return mb_used*1024*1024;
+    return ram_used;
 }
 
 byte* I_ZoneBase (int*	size)
 {
-    *size = mb_used*1024*1024;
+    *size = ram_used;
+    unsigned long memavail = Malloc(-1);
+    printf("Memory available: %ld\n", memavail);
     return (byte *) malloc (*size);
 }
 
@@ -87,16 +90,11 @@ byte* I_ZoneBase (int*	size)
 //
 int  I_GetTime (void)
 {
-    struct timeval	tp;
-    struct timezone	tzp;
-    int			newtics;
-    static int		basetime=0;
-  
-    gettimeofday(&tp, &tzp);
+    static unsigned long basetime=0;
+    unsigned long t = *_hz_200;
     if (!basetime)
-	basetime = tp.tv_sec;
-    newtics = (tp.tv_sec-basetime)*TICRATE + tp.tv_usec*TICRATE/1000000;
-    return newtics;
+	basetime = t;
+    return (t-basetime)*200*TICRATE/1000;
 }
 
 

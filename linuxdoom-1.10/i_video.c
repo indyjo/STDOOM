@@ -38,10 +38,12 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 #include "doomdef.h"
 
 byte		*st_screen;
+static void *old_interrupt_handler;
 
 
 void I_ShutdownGraphics(void)
 {
+    *(void **)0x118 = old_interrupt_handler;
 }
 
 
@@ -63,35 +65,51 @@ boolean		shmFinished;
 #define ACIA_RX_OVERRUN (1<<5)
 #define ACIA_RX_DATA    (1<<0)
 static volatile unsigned char *pAciaCtrl = (void*) 0xfffc00; 
-static volatile unsigned char *pAciaData = (void*) 0xfffc02; 
+static volatile unsigned char *pAciaData = (void*) 0xfffc02;
+static volatile unsigned char *pMfpIsrb = (void*) 0xfffa11;
+
+static unsigned char input_buffer[32];
+static unsigned char *next_read = input_buffer, *next_write = input_buffer;
+
+__attribute__((interrupt)) void keyboard_interrupt() {
+    unsigned char aciaCtrl = *pAciaCtrl;
+    if (aciaCtrl & ACIA_RX_OVERRUN) {
+        // Handle RX overrun
+        *pAciaData;
+    } else while (aciaCtrl & ACIA_RX_DATA) {
+        *next_write++ = *pAciaData;
+        if (next_write == input_buffer + sizeof(input_buffer)) {
+            next_write = input_buffer;
+        }
+        aciaCtrl = *pAciaCtrl;
+    }
+    // Clear interrupt
+    *pMfpIsrb &= ~(1<<6);
+}
 
 //
 // I_StartTic
 //
 void I_StartTic (void)
 {
-    event_t event;
 
-    unsigned char aciaCtrl = *pAciaCtrl;
-    if (aciaCtrl & ACIA_RX_OVERRUN) {
-        //printf("ACIA RX overrun detected.\n");
-        unsigned char aciaData = *pAciaData;
-        //printf("  Read byte %d to recover.\n", aciaData);
-    } else while (aciaCtrl & ACIA_RX_DATA) {
-        unsigned char aciaData = *pAciaData;
-        aciaCtrl = *pAciaCtrl;
-        //printf("Got byte from ACIA: %d (%s)- ctrl: %x\n", aciaData, (aciaData & 0x80) ? "release" : "press", aciaCtrl);
-        unsigned char scan = aciaData & 0x7f;
-        event.type = (aciaData & 0x80) ? ev_keyup : ev_keydown;
+    while (next_read != next_write) {
+        event_t event;
+        unsigned char data = *next_read++;
+        if (next_read == input_buffer + sizeof(input_buffer)) {
+            next_read = input_buffer;
+        } 
+        unsigned char scan = data & 0x7f;
+        event.type = (data & 0x80) ? ev_keyup : ev_keydown;
         // Atari ST keyboard layout: https://temlib.org/AtariForumWiki/index.php/Atari_ST_Scancode_diagram_by_Unseen_Menace
-	if (scan == 75) {
-	    event.data1 = KEY_LEFTARROW;
-	} else if (scan == 77) {
-	    event.data1 = KEY_RIGHTARROW;
-	} else if (scan == 72) {
-	    event.data1 = KEY_UPARROW;
-	} else if (scan == 80) {
-	    event.data1 = KEY_DOWNARROW;
+        if (scan == 75) {
+            event.data1 = KEY_LEFTARROW;
+        } else if (scan == 77) {
+            event.data1 = KEY_RIGHTARROW;
+        } else if (scan == 72) {
+            event.data1 = KEY_UPARROW;
+        } else if (scan == 80) {
+            event.data1 = KEY_DOWNARROW;
         } else if (scan == 1) {
             event.data1 = KEY_ESCAPE;
         } else if (scan == 28) {
@@ -128,15 +146,14 @@ void I_StartTic (void)
             event.data1 = '#';
         } else if (scan >= 0x2c && scan <= 0x35) {
             event.data1 = "zxcvbnm,./"[scan-0x2c];
-	} else {
-	    event.data1 = 0;
-            printf("Unknown key code %d\n", aciaData);
-	}
+        } else {
+            event.data1 = 0;
+            printf("Unknown input data %d\n", data);
+        }
         if (event.data1 != 0) {
             D_PostEvent(&event);
         }
     }
-
 }
 
 
@@ -199,13 +216,15 @@ void I_SetPalette (byte* palette)
 }
 
 extern const unsigned char subset[16];
+
 void I_InitGraphics(void)
 {
     printf("Enabling supervisor mode.\n");
     Super(0L);
     st_screen = Physbase();
-    printf("Disabling keyboard interrupt.n");
-    *pAciaCtrl = 0x16;
+    printf("Replacing keyboard interrupt.\n");
+    old_interrupt_handler = *(void**)0x118;
+    *(void**)0x118 = keyboard_interrupt;
     printf("Initializing c2p tables...\n");
     init_c2p_table();
 	unsigned char buf[128+16];
@@ -241,126 +260,5 @@ void InitExpand (void)
 	exptable[i] = i | (i<<8) | (i<<16) | (i<<24);
 }
 
-double		exptable2[256*256];
-
-void InitExpand2 (void)
-{
-    int		i;
-    int		j;
-    // UNUSED unsigned	iexp, jexp;
-    double*	exp;
-    union
-    {
-	double 		d;
-	unsigned	u[2];
-    } pixel;
-	
-    printf ("building exptable2...\n");
-    exp = exptable2;
-    for (i=0 ; i<256 ; i++)
-    {
-	pixel.u[0] = i | (i<<8) | (i<<16) | (i<<24);
-	for (j=0 ; j<256 ; j++)
-	{
-	    pixel.u[1] = j | (j<<8) | (j<<16) | (j<<24);
-	    *exp++ = pixel.d;
-	}
-    }
-    printf ("done.\n");
-}
-
 int	inited;
-
-void
-Expand4
-( unsigned*	lineptr,
-  double*	xline )
-{
-    double	dpixel;
-    unsigned	x;
-    unsigned 	y;
-    unsigned	fourpixels;
-    unsigned	step;
-    double*	exp;
-	
-    exp = exptable2;
-    if (!inited)
-    {
-	inited = 1;
-	InitExpand2 ();
-    }
-		
-		
-    step = 3*SCREENWIDTH/2;
-	
-    y = SCREENHEIGHT-1;
-    do
-    {
-	x = SCREENWIDTH;
-
-	do
-	{
-	    fourpixels = lineptr[0];
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
-	    xline[0] = dpixel;
-	    xline[160] = dpixel;
-	    xline[320] = dpixel;
-	    xline[480] = dpixel;
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
-	    xline[1] = dpixel;
-	    xline[161] = dpixel;
-	    xline[321] = dpixel;
-	    xline[481] = dpixel;
-
-	    fourpixels = lineptr[1];
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
-	    xline[2] = dpixel;
-	    xline[162] = dpixel;
-	    xline[322] = dpixel;
-	    xline[482] = dpixel;
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
-	    xline[3] = dpixel;
-	    xline[163] = dpixel;
-	    xline[323] = dpixel;
-	    xline[483] = dpixel;
-
-	    fourpixels = lineptr[2];
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
-	    xline[4] = dpixel;
-	    xline[164] = dpixel;
-	    xline[324] = dpixel;
-	    xline[484] = dpixel;
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
-	    xline[5] = dpixel;
-	    xline[165] = dpixel;
-	    xline[325] = dpixel;
-	    xline[485] = dpixel;
-
-	    fourpixels = lineptr[3];
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
-	    xline[6] = dpixel;
-	    xline[166] = dpixel;
-	    xline[326] = dpixel;
-	    xline[486] = dpixel;
-			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
-	    xline[7] = dpixel;
-	    xline[167] = dpixel;
-	    xline[327] = dpixel;
-	    xline[487] = dpixel;
-
-	    lineptr+=4;
-	    xline+=8;
-	} while (x-=16);
-	xline += step;
-    } while (y--);
-}
-
 
