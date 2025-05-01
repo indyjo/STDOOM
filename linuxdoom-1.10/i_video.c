@@ -148,7 +148,7 @@ void I_StartTic (void)
             event.data1 = "zxcvbnm,./"[scan-0x2c];
         } else {
             event.data1 = 0;
-            printf("Unknown input data %d\n", data);
+            // TODO: Implement all other IKBD event types.
         }
         if (event.data1 != 0) {
             D_PostEvent(&event);
