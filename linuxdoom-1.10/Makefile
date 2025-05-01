@@ -11,7 +11,7 @@ LDFLAGS=-L/usr/X11R6/lib
 #LIBS=-lXext -lX11 -lnsl -lm
 
 # subdirectory for objects
-O=linux
+O=atari
 
 # not too sophisticated dependency
 OBJS=				\
@@ -81,8 +81,7 @@ OBJS=				\
 all:	 $(O)/stdoom.tos
 
 clean:
-	rm -f *.o *~ *.flc
-	rm -f linux/*
+	rm -f $(O)/stdoom.tos $(O)/*.o
 
 $(O)/stdoom.tos:	$(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
