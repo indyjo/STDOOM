@@ -2,6 +2,7 @@
 #include "atari_c2p.h"
 #include "w_wad.h"
 #include "z_zone.h"
+#include "doomdef.h"
 
 // Set to 1 to use grayscale medium resolution (640x200) rendering.
 #define USE_MIDRES 0
@@ -10,10 +11,6 @@
 #define DESPECKLE_THRESHOLD 0
 
 #if !USE_MIDRES
-static void move_p_ofs(unsigned char *p, unsigned int data, unsigned char ofs) {
-	asm ("movep.l %0, %c2(%1)" : : "d" (data), "a" (p), "i" (ofs));
-}
-
 // Subset of DOOM colors to use for Atari palette
 const unsigned char subset[] = 
     {0, 90, 101, 241, 202, 252, 38, 219, 144, 136, 158, 120, 72, 58, 249, 4};
@@ -279,8 +276,8 @@ static unsigned char mix_weights[256][16] = {
 };
 #endif
 
-// [phase 0..3][pixel 0..7][color 0..255]
-static unsigned long c2p_table[4][8][256];
+// [phase 0..3][color 0..255][pixel 0..7]
+static unsigned long c2p_table[4][256][8];
 
 static unsigned short convert_channel(unsigned char v) {
     unsigned short r = (v & 0xe0) >> 5; // Bits 7,6,5 shifted to 2,1,0
@@ -372,7 +369,7 @@ void init_c2p_table() {
                         break;
                     }
                 }
-                c2p_table[phase][px][i] = pdata;
+                c2p_table[phase][i][px] = pdata;
                 combined_pdata |= pdata;
             }
         }
@@ -394,7 +391,7 @@ void init_c2p_table() {
                         if (c & 4) pdata |= 0x00000100;
                         if (c & 8) pdata |= 0x00000001;
                         pdata <<= 7-px;
-                        c2p_table[phase][px][i] = pdata;
+                        c2p_table[phase][i][px] = pdata;
                         break; // Search for color is finished. Continue with next pixel.
                     }
                     bayer_lwb += weights[c];
@@ -405,30 +402,151 @@ void init_c2p_table() {
 #endif
 }
 
-inline void c2p(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned char phase) {
+static void c2p(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]) {
 #if USE_MIDRES
 	while (pixels > 7) {
 		register unsigned long pdata = 0;
         for(int i=0; i<8; i++) {
-            pdata |= c2p_table[phase][i][*in++];
+            pdata |= table[*in++][i];
         }
         *(unsigned long*)out = pdata;
 		pixels -= 8;
 		out += 4;
 	}
 #else
-	while (pixels > 15) {
-		register unsigned int pdata; // 8 pixel data for use with movep
-		for (int j=0; j<2; j++) {
-			pdata = 0;
-			for(int i=0; i<8; i++) {
-				pdata |= c2p_table[phase][i][*in++];
-			}
-			move_p_ofs(out, pdata, j);
-		}
-		pixels -= 16;
-		out += 8;
-	}
+    if (pixels < 16) return;
+    unsigned short groups = pixels / 16 - 1;
+    unsigned long pdata = 0; // 32 bits of planar pixel data
+    unsigned long mask = 0x00ff00ff<<5; // Mask for isolating table indices (after shifting)
+    asm volatile (
+        // Beginning of dbra loop
+        "0:                                         \n\t"
+
+        // Read eight consecutive pixels from buffer into two 32 bit registers
+        "movem.l    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Prepare pixels 1, 3
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsl.l      #5,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 3
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 1
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Prepare pixels 0, 2
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsr.l      #3,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 2
+        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Pixel 0
+        "swap       %%d2                            \n\t"
+        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+
+        // Prepare pixels 5,7
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsl.l      #5,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 7
+        "or.l       28(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 5
+        "swap       %%d2                            \n\t"
+        "or.l       20(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Prepare pixels 4, 6
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsr.l      #3,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 6
+        "or.l       24(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 4
+        "swap       %%d2                            \n\t"
+        "or.l       16(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 0(%[out])             \n\t"
+
+        // Read another eight consecutive pixels from buffer into two 32 bit registers
+        "movem.l    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Prepare pixels 1, 3
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsl.l      #5,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 3
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 1
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Prepare pixels 0, 2
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsr.l      #3,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 2
+        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Pixel 0
+        "swap       %%d2                            \n\t"
+        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+
+        // Prepare pixels 5,7
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsl.l      #5,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 7
+        "or.l       28(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 5
+        "swap       %%d2                            \n\t"
+        "or.l       20(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Prepare pixels 4, 6
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsr.l      #3,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 6
+        "or.l       24(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 4
+        "swap       %%d2                            \n\t"
+        "or.l       16(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 1(%[out])             \n\t"
+        
+        // Advance out address by 16 pixels (8 bytes) and loop
+        "lea        8(%[out]), %[out]               \n\t"
+        "dbra.w     %[groups],0b                    \n\t"
+
+        // Outputs
+        : [out] "+a" (out)
+        , [in] "+a" (in)
+        , [pdata] "+d" (pdata)
+        , [groups] "+d" (groups)
+        
+        // Inputs
+        : [table] "a" (table)
+        , [mask] "d" (mask)
+        
+        // Clobbers
+        : "d0", "d1", "d2", "memory"
+    );
 #endif
 }
 
@@ -443,4 +561,35 @@ void set_doom_palette(const unsigned char *colors) {
     }
     install_palette(stpalette);
 #endif
+}
+
+void draw_palette_table(unsigned char *st_screen) {
+    unsigned char buf[128+16];
+	unsigned char c = 0;
+	for (int y=0; y<128; y+=8) {
+		for (int x=0; x<128; x+=8) {
+			for (int i=0; i<8; i++) buf[x+i] = c;
+            for (int i=0; i<16; i++) {
+                if (c == subset[i]) {
+                    buf[x] = 4;
+                    buf[x+7] = 0;
+                }
+            }
+			c++;
+		}
+        for (int x=128; x<128+8; x++) buf[x] = 0;
+        for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
+		for (int i=0; i<8; i++) c2p(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
+	}
+}
+
+// Set to 1 for no interlace
+#define INTERLACE_FIELDS 1
+
+void c2p_screen(unsigned char *out, const unsigned char *in) {
+    static int interlace_phase = 0;
+    for (int line = interlace_phase; line < SCREENHEIGHT; line+=INTERLACE_FIELDS ) {
+	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+    }
+    interlace_phase = (interlace_phase + 1) % INTERLACE_FIELDS;
 }

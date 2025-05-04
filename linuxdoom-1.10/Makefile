@@ -90,6 +90,10 @@ $(O)/stdoom.tos:	$(OBJS) $(O)/i_main.o
 $(O)/%.o:	%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Rule for compiling to assembly on demand
+$(O)/%.s: %.c
+	$(CC) $(CFLAGS) -c $< -S -fverbose-asm -o $@
+
 #############################################################
 #
 #############################################################

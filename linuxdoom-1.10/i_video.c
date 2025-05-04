@@ -192,9 +192,7 @@ void I_FinishUpdate (void)
     
     }
 
-    for (int line = 0; line < SCREENHEIGHT; line++ ) {
-	c2p(st_screen + 160*line, screens[0] + 320*line, 320, line&3);
-    }
+    c2p_screen(st_screen, screens[0]);
 }
 
 
@@ -227,23 +225,7 @@ void I_InitGraphics(void)
     *(void**)0x118 = keyboard_interrupt;
     printf("Initializing c2p tables...\n");
     init_c2p_table();
-	unsigned char buf[128+16];
-	unsigned char c = 0;
-	for (int y=0; y<128; y+=8) {
-		for (int x=0; x<128; x+=8) {
-			for (int i=0; i<8; i++) buf[x+i] = c;
-            for (int i=0; i<16; i++) {
-                if (c == subset[i]) {
-                    buf[x] = 4;
-                    buf[x+7] = 0;
-                }
-            }
-			c++;
-		}
-        for (int x=128; x<128+8; x++) buf[x] = 0;
-        for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
-		for (int i=0; i<8; i++) c2p(st_screen + 160*(32+y+i), buf, 128+16, i%4);
-	}
+    draw_palette_table(st_screen);
     printf ("Done.\n");
     // Set cursor to home and stop blinking.
     printf("\33H\33f\n");

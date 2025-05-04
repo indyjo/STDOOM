@@ -94,7 +94,7 @@ int  I_GetTime (void)
     unsigned long t = *_hz_200;
     if (!basetime)
 	basetime = t;
-    return (t-basetime)*200*TICRATE/1000;
+    return (t-basetime)*TICRATE/200;
 }
 
 
