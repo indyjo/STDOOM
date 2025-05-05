@@ -612,9 +612,9 @@ void IdentifyVersion (void)
     home = getenv("HOME");
     if (home) {
     	sprintf(basedefault, "%s/.doomrc", home);
-	} else {
-		sprintf(basedefault, "./.doomrc");
-	}
+    } else {
+	sprintf(basedefault, "./doomrc.cfg");
+    }
 #endif
 
     if (M_CheckParm ("-shdev"))
