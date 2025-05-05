@@ -57,8 +57,6 @@ void I_StartFrame (void)
 
 }
 
-static int	lastmousex = 0;
-static int	lastmousey = 0;
 boolean		mousemoved = false;
 boolean		shmFinished;
 
@@ -87,6 +85,35 @@ __attribute__((interrupt)) void keyboard_interrupt() {
     *pMfpIsrb &= ~(1<<6);
 }
 
+static char can_read_bytes_from_ringbuf(size_t num) {
+    if (num > sizeof(input_buffer)) {
+        return 0;
+    }
+    unsigned char * next = next_read;
+    while (next != next_write) {
+        if (--num == 0) {
+            return 1;
+        }
+        if (++next == input_buffer + sizeof(input_buffer)) {
+            next = input_buffer;
+        }
+    }
+    return 0;
+}
+
+// Read one byte from ringbuffer and return it.
+// Return -1 if no byte could be read.
+static int read_byte_from_ringbuf() {
+    if (next_read == next_write) {
+        return -1;
+    }
+    unsigned char result = *next_read++;
+    if (next_read == input_buffer + sizeof(input_buffer)) {
+        next_read = input_buffer;
+    }
+    return result; 
+}
+
 //
 // I_StartTic
 //
@@ -95,6 +122,7 @@ void I_StartTic (void)
 
     while (next_read != next_write) {
         event_t event;
+        unsigned char *next_read_copy = next_read;
         unsigned char data = *next_read++;
         if (next_read == input_buffer + sizeof(input_buffer)) {
             next_read = input_buffer;
@@ -102,7 +130,10 @@ void I_StartTic (void)
         unsigned char scan = data & 0x7f;
         event.type = (data & 0x80) ? ev_keyup : ev_keydown;
         // Atari ST keyboard layout: https://temlib.org/AtariForumWiki/index.php/Atari_ST_Scancode_diagram_by_Unseen_Menace
-        if (scan == 75) {
+        if (data == 0) {
+            // Ignore. Slightly worrying that we're seeing these.
+            continue;
+        } if (scan == 75) {
             event.data1 = KEY_LEFTARROW;
         } else if (scan == 77) {
             event.data1 = KEY_RIGHTARROW;
@@ -128,7 +159,7 @@ void I_StartTic (void)
             event.data1 = KEY_MINUS;
         } else if (scan == 13) {
             event.data1 = KEY_EQUALS;
-        } else if (scan == 0x2a) {
+        } else if (scan == 0x2a || scan == 0x36) {
             event.data1 = KEY_RSHIFT;
         } else if (scan == 0x1d) {
             event.data1 = KEY_RCTRL;
@@ -146,13 +177,67 @@ void I_StartTic (void)
             event.data1 = '#';
         } else if (scan >= 0x2c && scan <= 0x35) {
             event.data1 = "zxcvbnm,./"[scan-0x2c];
+        } else if (data >= 0xf8 && data <= 0xfb) {
+            // Relative mouse event
+            if (!can_read_bytes_from_ringbuf(2)) {
+                // Event not complete! Unread event and break loop.
+                next_read = next_read_copy;
+                break;
+            }
+            event.type = ev_mouse;
+            event.data1 = (data&1?2:0) | (data&2?1:0);
+            event.data2 = 100 * (char) read_byte_from_ringbuf();
+            event.data3 = -100 * (char) read_byte_from_ringbuf();
+        } else if (data == 0xf6) {
+            // Status report. Can be ignored?
+            if (!can_read_bytes_from_ringbuf(7)) {
+                // Event not complete! Unread event and break loop.
+                next_read = next_read_copy;
+                break;
+            }
+            for (int i=0; i<7; i++) {
+                read_byte_from_ringbuf();
+            }
+            continue;
+        } else if (data == 0xfc) {
+            // Time of day. Can be ignored?
+            if (!can_read_bytes_from_ringbuf(6)) {
+                // Event not complete! Unread event and break loop.
+                next_read = next_read_copy;
+                break;
+            }
+            for (int i=0; i<6; i++) {
+                read_byte_from_ringbuf();
+            }
+            continue;
+        } else if (data == 0xfd) {
+            // Joystick report. Can be ignored?
+            if (!can_read_bytes_from_ringbuf(2)) {
+                // Event not complete! Unread event and break loop.
+                next_read = next_read_copy;
+                break;
+            }
+            for (int i=0; i<2; i++) {
+                read_byte_from_ringbuf();
+            }
+            continue;
+        } else if (data >= 0xfe) {
+            if (!can_read_bytes_from_ringbuf(1)) {
+                // Event not complete! Unread event and break loop.
+                next_read = next_read_copy;
+                break;
+            }
+            read_byte_from_ringbuf();
+            // TODO: Support joystick events
+            continue;
         } else {
-            event.data1 = 0;
             // TODO: Implement all other IKBD event types.
+            // Do not post this event.
+            printf("Unknown IKBD event type %02x\n", data);
+            for (volatile int i=0; i<1000000; i++) ;
+            continue;
         }
-        if (event.data1 != 0) {
-            D_PostEvent(&event);
-        }
+        D_PostEvent(&event);
     }
 }
 
