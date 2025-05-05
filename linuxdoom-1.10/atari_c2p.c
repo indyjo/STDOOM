@@ -703,8 +703,16 @@ void c2p_screen(unsigned char *out, const unsigned char *in) {
             c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
         }
     }
-    for (int line = splitline; line < SCREENHEIGHT; line++ ) {
-	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+    static int interlace_phase = 0;
+    if (splitline == 0) {
+        for (int line = splitline; line < SCREENHEIGHT; line++ ) {
+            c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+        }
+    } else {
+        for (int line = splitline + interlace_phase; line < SCREENHEIGHT; line+= 2 ) {
+            c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+        }
+        interlace_phase = (interlace_phase+1) % 2;
     }
 #endif
 }
