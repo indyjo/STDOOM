@@ -1,5 +1,6 @@
 #include <mint/osbind.h>
 #include "atari_c2p.h"
+#include "r_main.h"
 #include "w_wad.h"
 #include "z_zone.h"
 #include "doomdef.h"
@@ -7,10 +8,11 @@
 // Set to 1 to use grayscale medium resolution (640x200) rendering.
 #define USE_MIDRES 0
 
-// Set to 1 or higher to drop small color contributions.
-#define DESPECKLE_THRESHOLD 0
-
 #if !USE_MIDRES
+static void move_p_ofs(unsigned char *p, unsigned int data, unsigned char ofs) {
+	asm ("movep.l %0, %c2(%1)" : : "d" (data), "a" (p), "i" (ofs));
+}
+
 // Subset of DOOM colors to use for Atari palette
 const unsigned char subset[] = 
     {0, 90, 101, 241, 202, 252, 38, 219, 144, 136, 158, 120, 72, 58, 249, 4};
@@ -276,8 +278,13 @@ static unsigned char mix_weights[256][16] = {
 };
 #endif
 
+// C2P table for full resolution
 // [phase 0..3][color 0..255][pixel 0..7]
 static unsigned long c2p_table[4][256][8];
+
+// C2P table for half resolution (2x2 pixels)
+// [phase 0..3][color 0..255][pixel 0..3]
+static unsigned long c2p_2x_table[4][256][4];
 
 static unsigned short convert_channel(unsigned char v) {
     unsigned short r = (v & 0xe0) >> 5; // Bits 7,6,5 shifted to 2,1,0
@@ -302,22 +309,6 @@ void install_palette(unsigned short *palette) {
 #endif
     for (short n=0; n<numColors; n++) *reg++ = *palette++;
 }
-
-#if !USE_MIDRES
-void adapt_weights(unsigned char *w) {
-    int sum = 0;
-    for (int i=0; i<16; i++) {
-        if (w[i] > DESPECKLE_THRESHOLD) sum += w[i];
-    }
-    int accum = 0;
-    for (int i=15; i>=0; i--) {
-        int last = accum;
-        if (w[i] > DESPECKLE_THRESHOLD) accum += w[i];
-        w[i] = 16 * accum / sum - 16 * last / sum;
-    }
-
-}
-#endif
 
 void init_c2p_table() {
 	unsigned short bayer[4][4] = {
@@ -377,7 +368,6 @@ void init_c2p_table() {
 #else
 	for (int i=0; i<256; i++) {
         unsigned char *weights = mix_weights[i];
-        adapt_weights(weights);
         for (int phase=0; phase<4; phase++) {
             for (int px=0; px<8; px++) {
                 // Find the ST palette color index to fill the pixel with.
@@ -396,6 +386,33 @@ void init_c2p_table() {
                     }
                     bayer_lwb += weights[c];
                 }
+            }
+        }
+	}
+	for (int i=0; i<256; i++) {
+        unsigned char *weights = mix_weights[i];
+        for (int phase=0; phase<4; phase++) {
+            for (int ipx=0; ipx<4; ipx++) {
+                unsigned long ipx_pdata = 0;
+                for (int opx=2*ipx; opx<2*ipx+2; opx++) {
+                    // Find the ST palette color index to fill the pixel with.
+                    int bayer_lwb = 0, bayer_upb = 0;
+                    for (int c=0; c<16; c++) {
+                        bayer_upb += weights[c];
+                        if (bayer[phase][opx%4] >= bayer_lwb && bayer[phase][opx%4] < bayer_upb) {
+                            unsigned long pdata = 0;
+                            if (c & 1) pdata |= 0x01000000;
+                            if (c & 2) pdata |= 0x00010000;
+                            if (c & 4) pdata |= 0x00000100;
+                            if (c & 8) pdata |= 0x00000001;
+                            pdata <<= 7-opx;
+                            ipx_pdata |= pdata;
+                            break; // Search for color is finished. Continue with next pixel.
+                        }
+                        bayer_lwb += weights[c];
+                    }
+                }
+                c2p_2x_table[phase][i][ipx] = ipx_pdata;
             }
         }
 	}
@@ -550,6 +567,22 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
 #endif
 }
 
+#if !USE_MIDRES
+static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][4]) {
+    short groups = pixels / 8;
+    while (groups-- > 0) {
+        for (short j=0; j<2; j++) {
+            unsigned long pdata = 0;
+            for (short i=0; i<4; i++) {
+                pdata |= table[*in++][i];
+            }
+            move_p_ofs(out, pdata, j);
+        }
+        out += 8;
+    }
+}
+#endif
+
 void set_doom_palette(const unsigned char *colors) {
 #if USE_MIDRES
     // do nothing
@@ -583,13 +616,28 @@ void draw_palette_table(unsigned char *st_screen) {
 	}
 }
 
-// Set to 1 for no interlace
-#define INTERLACE_FIELDS 1
+extern boolean inhelpscreens;
+extern boolean menuactive;
+extern boolean automapactive;
+extern gamestate_t gamestate;
 
 void c2p_screen(unsigned char *out, const unsigned char *in) {
-    static int interlace_phase = 0;
-    for (int line = interlace_phase; line < SCREENHEIGHT; line+=INTERLACE_FIELDS ) {
+#if USE_MIDRES
+    for (int line = 0; line < SCREENHEIGHT; line++ ) {
 	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
     }
-    interlace_phase = (interlace_phase + 1) % INTERLACE_FIELDS;
+#else
+    int splitline = 0;
+    boolean zoom_allowed = gamestate == GS_LEVEL
+        && !menuactive && !inhelpscreens && !automapactive;
+    if (zoom_allowed && viewwidth <= SCREENWIDTH/2) {
+        splitline = 200-32;
+        for (int line = 0; line < splitline; line++ ) {
+            c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
+        }
+    }
+    for (int line = splitline; line < SCREENHEIGHT; line++ ) {
+	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+    }
+#endif
 }
