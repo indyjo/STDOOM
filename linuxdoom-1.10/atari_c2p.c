@@ -9,10 +9,6 @@
 #define USE_MIDRES 0
 
 #if !USE_MIDRES
-static void move_p_ofs(unsigned char *p, unsigned int data, unsigned char ofs) {
-	asm ("movep.l %0, %c2(%1)" : : "d" (data), "a" (p), "i" (ofs));
-}
-
 // Subset of DOOM colors to use for Atari palette
 const unsigned char subset[] = 
     {0, 90, 101, 241, 202, 252, 38, 219, 144, 136, 158, 120, 72, 58, 249, 4};
@@ -569,17 +565,88 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
 
 #if !USE_MIDRES
 static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][4]) {
-    short groups = pixels / 8;
-    while (groups-- > 0) {
-        for (short j=0; j<2; j++) {
-            unsigned long pdata = 0;
-            for (short i=0; i<4; i++) {
-                pdata |= table[*in++][i];
-            }
-            move_p_ofs(out, pdata, j);
-        }
-        out += 8;
-    }
+    if (pixels < 8) return;
+    short groups = pixels / 8 - 1;
+    unsigned long pdata = 0; // 32 bits of planar pixel data
+    unsigned long mask = 0x00ff00ff<<4; // Mask for isolating table indices (after shifting)
+    asm volatile (
+        // Beginning of dbra loop
+        "0:                                         \n\t"
+
+        // Read eight consecutive pixels from buffer into two 32 bit registers
+        "movem.l    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Prepare pixels 1, 3
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsl.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 3
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 1
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Prepare pixels 0, 2
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsr.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 2
+        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Pixel 0
+        "swap       %%d2                            \n\t"
+        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 0(%[out])             \n\t"
+
+        // Prepare pixels 5,7
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsl.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 7
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 5
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Prepare pixels 4, 6
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsr.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 6
+        "or.l       8(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 4
+        "swap       %%d2                            \n\t"
+        "or.l       (%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 1(%[out])             \n\t"
+
+        // Advance out address by 16 pixels (8 bytes) and loop
+        "lea        8(%[out]), %[out]               \n\t"
+        "dbra.w     %[groups],0b                    \n\t"
+
+        // Outputs
+        : [out] "+a" (out)
+        , [in] "+a" (in)
+        , [pdata] "+d" (pdata)
+        , [groups] "+d" (groups)
+        
+        // Inputs
+        : [table] "a" (table)
+        , [mask] "d" (mask)
+        
+        // Clobbers
+        : "d0", "d1", "d2", "memory"
+    );
 }
 #endif
 
