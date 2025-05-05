@@ -451,16 +451,15 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
         "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
 
         // Prepare pixels 0, 2
-        "move.l     %%d0,%%d2                       \n\t"
-        "lsr.l      #3,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #3,%%d0                         \n\t"
+        "and.l      %[mask],%%d0                    \n\t"
 
         // Pixel 2
-        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+        "or.l       8(%[table],%%d0.w), %[pdata]    \n\t"
 
         // Pixel 0
-        "swap       %%d2                            \n\t"
-        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+        "swap       %%d0                            \n\t"
+        "or.l       (%[table],%%d0.w), %[pdata]     \n\t"
 
         // Prepare pixels 5,7
         "move.l     %%d1,%%d2                       \n\t"
@@ -475,16 +474,15 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
         "or.l       20(%[table],%%d2.w), %[pdata]   \n\t"
 
         // Prepare pixels 4, 6
-        "move.l     %%d1,%%d2                       \n\t"
-        "lsr.l      #3,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #3,%%d1                         \n\t"
+        "and.l      %[mask],%%d1                    \n\t"
 
         // Pixel 6
-        "or.l       24(%[table],%%d2.w), %[pdata]   \n\t"
+        "or.l       24(%[table],%%d1.w), %[pdata]   \n\t"
 
         // Pixel 4
-        "swap       %%d2                            \n\t"
-        "or.l       16(%[table],%%d2.w), %[pdata]   \n\t"
+        "swap       %%d1                            \n\t"
+        "or.l       16(%[table],%%d1.w), %[pdata]   \n\t"
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 0(%[out])             \n\t"
@@ -505,16 +503,15 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
         "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
 
         // Prepare pixels 0, 2
-        "move.l     %%d0,%%d2                       \n\t"
-        "lsr.l      #3,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #3,%%d0                         \n\t"
+        "and.l      %[mask],%%d0                    \n\t"
 
         // Pixel 2
-        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+        "or.l       8(%[table],%%d0.w), %[pdata]    \n\t"
 
         // Pixel 0
-        "swap       %%d2                            \n\t"
-        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+        "swap       %%d0                            \n\t"
+        "or.l       (%[table],%%d0.w), %[pdata]     \n\t"
 
         // Prepare pixels 5,7
         "move.l     %%d1,%%d2                       \n\t"
@@ -529,16 +526,15 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
         "or.l       20(%[table],%%d2.w), %[pdata]   \n\t"
 
         // Prepare pixels 4, 6
-        "move.l     %%d1,%%d2                       \n\t"
-        "lsr.l      #3,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #3,%%d1                         \n\t"
+        "and.l      %[mask],%%d1                    \n\t"
 
         // Pixel 6
-        "or.l       24(%[table],%%d2.w), %[pdata]   \n\t"
+        "or.l       24(%[table],%%d1.w), %[pdata]   \n\t"
 
         // Pixel 4
-        "swap       %%d2                            \n\t"
-        "or.l       16(%[table],%%d2.w), %[pdata]   \n\t"
+        "swap       %%d1                            \n\t"
+        "or.l       16(%[table],%%d1.w), %[pdata]   \n\t"
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 1(%[out])             \n\t"
@@ -589,16 +585,15 @@ static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigne
         "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
 
         // Prepare pixels 0, 2
-        "move.l     %%d0,%%d2                       \n\t"
-        "lsr.l      #4,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #4,%%d0                         \n\t"
+        "and.l      %[mask],%%d0                    \n\t"
 
         // Pixel 2
-        "or.l       8(%[table],%%d2.w), %[pdata]    \n\t"
+        "or.l       8(%[table],%%d0.w), %[pdata]    \n\t"
 
         // Pixel 0
-        "swap       %%d2                            \n\t"
-        "or.l       (%[table],%%d2.w), %[pdata]     \n\t"
+        "swap       %%d0                            \n\t"
+        "or.l       (%[table],%%d0.w), %[pdata]     \n\t"
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 0(%[out])             \n\t"
@@ -616,16 +611,15 @@ static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigne
         "or.l       4(%[table],%%d2.w), %[pdata]   \n\t"
 
         // Prepare pixels 4, 6
-        "move.l     %%d1,%%d2                       \n\t"
-        "lsr.l      #4,%%d2                         \n\t"
-        "and.l      %[mask],%%d2                    \n\t"
+        "lsr.l      #4,%%d1                         \n\t"
+        "and.l      %[mask],%%d1                    \n\t"
 
         // Pixel 6
-        "or.l       8(%[table],%%d2.w), %[pdata]   \n\t"
+        "or.l       8(%[table],%%d1.w), %[pdata]   \n\t"
 
         // Pixel 4
-        "swap       %%d2                            \n\t"
-        "or.l       (%[table],%%d2.w), %[pdata]   \n\t"
+        "swap       %%d1                            \n\t"
+        "or.l       (%[table],%%d1.w), %[pdata]     \n\t"
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 1(%[out])             \n\t"
