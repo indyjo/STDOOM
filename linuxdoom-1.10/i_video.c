@@ -66,8 +66,19 @@ static volatile unsigned char *pAciaCtrl = (void*) 0xfffc00;
 static volatile unsigned char *pAciaData = (void*) 0xfffc02;
 static volatile unsigned char *pMfpIsrb = (void*) 0xfffa11;
 
-static unsigned char input_buffer[32];
+static unsigned char input_buffer[256];
 static unsigned char *next_read = input_buffer, *next_write = input_buffer;
+
+static char input_buffer_full() {
+    unsigned char *p = next_write + 1;
+    if (p == input_buffer + sizeof(input_buffer))
+        p = input_buffer;
+    return p == next_read;
+}
+
+static char input_buffer_empty() {
+    return next_read == next_write;
+}
 
 __attribute__((interrupt)) void keyboard_interrupt() {
     unsigned char aciaCtrl = *pAciaCtrl;
@@ -75,6 +86,10 @@ __attribute__((interrupt)) void keyboard_interrupt() {
         // Handle RX overrun
         *pAciaData;
     } else while (aciaCtrl & ACIA_RX_DATA) {
+        if (input_buffer_full()) {
+            printf("Input buffer overflow\n");
+            break;
+        }
         *next_write++ = *pAciaData;
         if (next_write == input_buffer + sizeof(input_buffer)) {
             next_write = input_buffer;
@@ -104,7 +119,7 @@ static char can_read_bytes_from_ringbuf(size_t num) {
 // Read one byte from ringbuffer and return it.
 // Return -1 if no byte could be read.
 static int read_byte_from_ringbuf() {
-    if (next_read == next_write) {
+    if (input_buffer_empty()) {
         return -1;
     }
     unsigned char result = *next_read++;
@@ -119,14 +134,10 @@ static int read_byte_from_ringbuf() {
 //
 void I_StartTic (void)
 {
-
-    while (next_read != next_write) {
+    while (!input_buffer_empty()) {
         event_t event;
         unsigned char *next_read_copy = next_read;
-        unsigned char data = *next_read++;
-        if (next_read == input_buffer + sizeof(input_buffer)) {
-            next_read = input_buffer;
-        } 
+        unsigned char data = read_byte_from_ringbuf();
         unsigned char scan = data & 0x7f;
         event.type = (data & 0x80) ? ev_keyup : ev_keydown;
         // Atari ST keyboard layout: https://temlib.org/AtariForumWiki/index.php/Atari_ST_Scancode_diagram_by_Unseen_Menace
@@ -167,6 +178,9 @@ void I_StartTic (void)
             event.data1 = KEY_RALT;
         } else if (scan == 0x39) {
             event.data1 = ' ';
+        } else if (scan == 0x3a) {
+            // Don't know how to send CAPSLOCK key
+            continue;
         } else if (scan >= 0x2 && scan <= 0xd) {
             event.data1 = "1234567890-="[scan-0x2];
         } else if (scan >= 0x10 && scan <= 0x1B) {
@@ -185,7 +199,7 @@ void I_StartTic (void)
                 break;
             }
             event.type = ev_mouse;
-            event.data1 = (data&1?2:0) | (data&2?1:0);
+            event.data1 = (data&1 ? BT_USE : 0) | (data&2 ? BT_ATTACK : 0);
             event.data2 = 100 * (char) read_byte_from_ringbuf();
             event.data3 = -100 * (char) read_byte_from_ringbuf();
         } else if (data == 0xf6) {
@@ -234,7 +248,6 @@ void I_StartTic (void)
             // TODO: Implement all other IKBD event types.
             // Do not post this event.
             printf("Unknown IKBD event type %02x\n", data);
-            for (volatile int i=0; i<1000000; i++) ;
             continue;
         }
         D_PostEvent(&event);
