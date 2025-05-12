@@ -578,7 +578,8 @@ void I_UpdateSound( void )
     for (chan = 0; chan <= NUM_CHANNELS; chan++) {
         if (chan == NUM_CHANNELS) {
             memset(mixbuffer, 0, MIXBUFFERSIZE);
-            return;
+            out = end;
+            break;
         }
         if (channels[chan]) break;
     }   
