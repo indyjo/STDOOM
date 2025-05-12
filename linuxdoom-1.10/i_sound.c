@@ -527,8 +527,13 @@ int I_SoundIsPlaying(int handle)
 // When either no sound is playing or the current sound buffer is almost finished.
 __attribute_noinline__ boolean I_ShouldSubmitSound() {
   unsigned long addr = *pDmaSndAdrLo | (*pDmaSndAdrMi << 8) | (*pDmaSndAdrHi << 16);
+  // Sometimes we'll see a runaway DMA sound chip. Stop it in its tracks!
+  if (addr < (unsigned long) sndbuffer1 || addr > (unsigned long) sndbuffer3 + MIXBUFFERSIZE) {
+        *pDmaSndCtrl &= ~DMASND_CTRL_ON;
+        return 1;
+  }
   boolean on = *pDmaSndCtrl & DMASND_CTRL_ON;
-  boolean result = !on || addr == 0 || (addr > playbuffer + MIXBUFFERSIZE/4 && addr <= playbuffer + MIXBUFFERSIZE);
+  boolean result = !on || addr == 0 || (addr > playbuffer + MIXBUFFERSIZE/2 && addr <= playbuffer + MIXBUFFERSIZE - 8);
   //printf("\rba %06lx ad %06lx pl %06p on %d -> %d", base, addr, playbuffer, on, result);
   return result;
 }
