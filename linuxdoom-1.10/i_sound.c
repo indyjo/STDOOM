@@ -110,6 +110,10 @@ static volatile unsigned char *pDmaSndEndMi = (void*) 0xff8911;
 static volatile unsigned char *pDmaSndEndLo = (void*) 0xff8913;
 static volatile unsigned char *pDmaSndMode = (void*) 0xff8921;
 
+// Palette register for debugging 
+//static volatile unsigned short *pPalette = (void*)0xff8240;
+
+
 #define DMASND_CTRL_OFF 0
 #define DMASND_CTRL_ON 1
 #define DMASND_CTRL_LOOP 2
@@ -170,11 +174,11 @@ int		channelids[NUM_CHANNELS];
 int		steptable[256];
 
 // Volume lookups.
-short		vol_lookup[128*256];
+char		vol_lookup[128*256];
 
 // Hardware left and right channel volume lookup.
-short*		channelleftvol_lookup[NUM_CHANNELS];
-short*		channelrightvol_lookup[NUM_CHANNELS];
+char*		channelleftvol_lookup[NUM_CHANNELS];
+char*		channelrightvol_lookup[NUM_CHANNELS];
 
 
 
@@ -422,7 +426,7 @@ void I_SetChannels()
   //  into signed samples.
   for (i=0 ; i<128 ; i++)
     for (j=0 ; j<256 ; j++)
-      vol_lookup[i*256+j] = (short)((i*(j-128)*256)/127) >> 6;
+      vol_lookup[i*256+j] = (char)((i*(j-128))/128);
 }	
 
  
@@ -562,7 +566,7 @@ void I_UpdateSound( void )
   
   // Mix current sound data.
   // Data, from raw sound, for right and left.
-  register unsigned int	sample;
+  register unsigned char sample;
   register short	dl;
   
   // Pointers in global mixbuffer, left, right, end.
@@ -579,15 +583,53 @@ void I_UpdateSound( void )
     //  (right channel is implicit).
     end = out + SAMPLECOUNT;
 
-    // Optimization: If no channels active, memset to 0 and return.
-    for (chan = 0; chan <= NUM_CHANNELS; chan++) {
-        if (chan == NUM_CHANNELS) {
-            memset(mixbuffer, 0, MIXBUFFERSIZE);
-            out = end;
-            break;
+    // Collect active channels into a kind of linked list.
+    short next_active_channel[NUM_CHANNELS+1];
+    short last_active_channel = NUM_CHANNELS;
+    short num_active_channels = 0;
+    for (chan = 0; chan < NUM_CHANNELS; chan++) {
+        if (channels[chan]) {
+            num_active_channels++;
+            next_active_channel[last_active_channel] = chan;
+            last_active_channel = chan;
         }
-        if (channels[chan]) break;
-    }   
+    }
+    next_active_channel[last_active_channel] = NUM_CHANNELS;
+
+    if (num_active_channels == 0) {
+        // Optimization: If no channels active, memset to 0 and return.
+        memset(mixbuffer, 0, MIXBUFFERSIZE);
+        out = end;
+    } else if (num_active_channels == 1) {
+        // Optimization: If exactly one channel active, don't mix
+        chan = last_active_channel;
+
+        if (channels[chan] + ((SAMPLECOUNT*channelstep[chan] + channelstepremainder[chan]) >> 16) < channelsend[chan]) {
+            // Optimization: sample won't end in this frame
+            while (out != end) {
+                sample = *channels[ chan ];
+                dl = channelleftvol_lookup[chan][sample] << 8 | (channelrightvol_lookup[chan][sample] & 0xff);
+                channelstepremainder[ chan ] += channelstep[ chan ];
+                channels[ chan ] += channelstepremainder[ chan ] >> 16;
+                channelstepremainder[ chan ] &= 65536-1;
+                *out++ = dl;
+            }
+        }
+        while (out != end) {
+            sample = *channels[ chan ];
+            dl = channelleftvol_lookup[chan][sample] << 8 | (channelrightvol_lookup[chan][sample] & 0xff);
+            channelstepremainder[ chan ] += channelstep[ chan ];
+            channels[ chan ] += channelstepremainder[ chan ] >> 16;
+            channelstepremainder[ chan ] &= 65536-1;
+            if (channels[ chan ] >= channelsend[ chan ]) {
+                channels[ chan ] = 0;
+                break;
+            }
+            *out++ = dl;
+        }
+        // Fill remaining buffer bytes with zeros if sample ended prematurely.
+        while (out != end) *out++ = 0;
+    }
 
     // Mix sounds into the mixing buffer.
     // Loop over step*SAMPLECOUNT,
@@ -600,29 +642,33 @@ void I_UpdateSound( void )
 	// Love thy L2 chache - made this a loop.
 	// Now more channels could be set at compile time
 	//  as well. Thus loop those  channels.
-	for ( chan = 0; chan < NUM_CHANNELS; chan++ )
+	chan = NUM_CHANNELS;
+        short prev_chan = chan;
+        while ((chan = next_active_channel[chan]) != NUM_CHANNELS )
 	{
-	    // Check channel, if active.
-	    if (channels[ chan ])
-	    {
-		// Get the raw data from the channel. 
-		sample = *channels[ chan ];
-		// Add left and right part
-		//  for this channel (sound)
-		//  to the current data.
-		// Adjust volume accordingly.
-		dl += (channelleftvol_lookup[ chan ][sample]) << 8 | (channelrightvol_lookup[ chan ][sample] & 0xff);
-		// Increment index ???
-		channelstepremainder[ chan ] += channelstep[ chan ];
-		// MSB is next sample???
-		channels[ chan ] += channelstepremainder[ chan ] >> 16;
-		// Limit to LSB???
-		channelstepremainder[ chan ] &= 65536-1;
+            // Get the raw data from the channel. 
+            sample = *channels[ chan ];
+            // Add left and right part
+            //  for this channel (sound)
+            //  to the current data.
+            // Adjust volume accordingly.
+            dl += (channelleftvol_lookup[ chan ][sample]) << 8 | (channelrightvol_lookup[ chan ][sample] & 0xff);
+            // Increment index ???
+            channelstepremainder[ chan ] += channelstep[ chan ];
+            // MSB is next sample???
+            channels[ chan ] += channelstepremainder[ chan ] >> 16;
+            // Limit to LSB???
+            channelstepremainder[ chan ] &= 65536-1;
 
-		// Check whether we are done.
-		if (channels[ chan ] >= channelsend[ chan ])
-		    channels[ chan ] = 0;
-	    }
+            // Check whether we are done.
+            if (channels[ chan ] >= channelsend[ chan ]) {
+                channels[ chan ] = 0;
+                
+                next_active_channel[prev_chan] = next_active_channel[chan];
+                chan = prev_chan;
+                continue;
+            }
+            prev_chan = chan;
 	}
 	
         // Write to mixbuffer
@@ -903,17 +949,14 @@ void I_HandleSoundTimer( int ignore )
 
 static volatile void (**pVblVec)() = (void *)0x70;
 static void (*pOldVblVec)() = 0;
-//static volatile unsigned short *pPalette = (void*)0xff8240;
 
 __attribute__((interrupt)) void vbl_interrupt() {
-  //*pPalette = 0x000f;
   if (!flag) {
     I_UpdateSound();
   }
   if (I_ShouldSubmitSound()) {
     I_HandleSoundTimer(0);
   }
-  //*pPalette = 0x0000;
 }
 
 // Get the interrupt. Set duration in millisecs.
