@@ -40,6 +40,9 @@ extern char* sndserver_filename;
 // Init at program start...
 void I_InitSound();
 
+// ... check whether the time is right to submit new sound ...
+boolean I_ShouldSubmitSound();
+
 // ... update sound buffer and audio device at runtime...
 void I_UpdateSound(void);
 void I_SubmitSound(void);
@@ -111,7 +114,6 @@ I_PlaySong
 void I_StopSong(int handle);
 // See above (register), then think backwards
 void I_UnRegisterSong(int handle);
-
 
 
 #endif

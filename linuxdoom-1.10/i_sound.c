@@ -54,6 +54,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include "i_sound.h"
 #include "m_argv.h"
 #include "m_misc.h"
+#include "m_swap.h"
 #include "w_wad.h"
 
 #include "doomdef.h"
@@ -90,26 +91,51 @@ static int flag = 0;
 
 
 // Needed for calling the actual sound output.
-#define SAMPLECOUNT		512
-#define NUM_CHANNELS		8
-// It is 2 for 16bit, and 2 for two channels.
-#define BUFMUL                  4
+#define SAMPLECOUNT		256
+#define NUM_CHANNELS		4
+// It is 1 for 8bit times 2 for two channels.
+#define BUFMUL                  2
 #define MIXBUFFERSIZE		(SAMPLECOUNT*BUFMUL)
 
-#define SAMPLERATE		11025	// Hz
-#define SAMPLESIZE		2   	// 16bit
+// Atari STE DMA sound hardware registers
+static volatile unsigned char *pDmaSndCtrl = (void*) 0xff8901;
+static volatile unsigned char *pDmaSndBasHi = (void*) 0xff8903;
+static volatile unsigned char *pDmaSndBasMi = (void*) 0xff8905;
+static volatile unsigned char *pDmaSndBasLo = (void*) 0xff8907;
+static volatile unsigned char *pDmaSndAdrHi = (void*) 0xff8909;
+static volatile unsigned char *pDmaSndAdrMi = (void*) 0xff890b;
+static volatile unsigned char *pDmaSndAdrLo = (void*) 0xff890d;
+static volatile unsigned char *pDmaSndEndHi = (void*) 0xff890f;
+static volatile unsigned char *pDmaSndEndMi = (void*) 0xff8911;
+static volatile unsigned char *pDmaSndEndLo = (void*) 0xff8913;
+static volatile unsigned char *pDmaSndMode = (void*) 0xff8921;
+
+#define DMASND_CTRL_OFF 0
+#define DMASND_CTRL_ON 1
+#define DMASND_CTRL_LOOP 2
+
+#define DMASND_MODE_STEREO 0
+#define DMASND_MODE_MONO 128
+#define DMASND_MODE_HZ_6258 0
+#define DMASND_MODE_HZ_12517 1
+#define DMASND_MODE_HZ_25033 2
+#define DMASND_MODE_HZ_50066 3
 
 // The actual lengths of all sound effects.
 int 		lengths[NUMSFX];
-
-// The actual output device.
-int	audio_fd;
 
 // The global mixing buffer.
 // Basically, samples from all active internal channels
 //  are modifed and added, and stored in the buffer
 //  that is submitted to the audio device.
-signed short	mixbuffer[MIXBUFFERSIZE];
+// Atari ST: For DMA sound, we keep three buffers around, internally called
+//           sndbuffer1..3:
+//           - mixbuffer points to one that is currently free to write into for mixing
+//           - playbuffer points to the one that has most recently been sent to DMA sound
+//           - lastbuffer points to the one that was playing before the current playbuffer, but which
+//             might still be being finished by the DMA sound
+signed char     sndbuffer1[MIXBUFFERSIZE], sndbuffer2[MIXBUFFERSIZE], sndbuffer3[MIXBUFFERSIZE];
+signed char	*mixbuffer = sndbuffer1, *playbuffer = sndbuffer2, *lastbuffer = sndbuffer3;
 
 
 // The channel step amount...
@@ -144,35 +170,11 @@ int		channelids[NUM_CHANNELS];
 int		steptable[256];
 
 // Volume lookups.
-int		vol_lookup[128*256];
+short		vol_lookup[128*256];
 
 // Hardware left and right channel volume lookup.
-int*		channelleftvol_lookup[NUM_CHANNELS];
-int*		channelrightvol_lookup[NUM_CHANNELS];
-
-
-
-
-//
-// Safe ioctl, convenience.
-//
-void
-myioctl
-( int	fd,
-  int	command,
-  int*	arg )
-{   
-    int		rc;
-    extern int	errno;
-    
-    rc = ioctl(fd, command, arg);  
-    if (rc < 0)
-    {
-	fprintf(stderr, "ioctl(dsp,%d,arg) failed\n", command);
-	fprintf(stderr, "errno=%d\n", errno);
-	exit(-1);
-    }
-}
+short*		channelleftvol_lookup[NUM_CHANNELS];
+short*		channelrightvol_lookup[NUM_CHANNELS];
 
 
 
@@ -411,8 +413,8 @@ void I_SetChannels()
 
   // This table provides step widths for pitch parameters.
   // I fail to see that this is currently used.
-  // for (i=-128 ; i<128 ; i++)
-  //   steptablemid[i] = (int)(pow(2.0, (i/64.0))*65536.0);
+  for (i=-128 ; i<128 ; i++)
+    steptablemid[i] = (int)(pow(2.0, (i/64.0))*65536.0);
   
   
   // Generates volume lookup tables
@@ -420,7 +422,7 @@ void I_SetChannels()
   //  into signed samples.
   for (i=0 ; i<128 ; i++)
     for (j=0 ; j<256 ; j++)
-      vol_lookup[i*256+j] = (i*(j-128)*256)/127;
+      vol_lookup[i*256+j] = (short)((i*(j-128)*256)/127) >> 6;
 }	
 
  
@@ -521,6 +523,15 @@ int I_SoundIsPlaying(int handle)
 }
 
 
+// Check whether the time is right to submit new sound.
+// When either no sound is playing or the current sound buffer is almost finished.
+__attribute_noinline__ boolean I_ShouldSubmitSound() {
+  unsigned long addr = *pDmaSndAdrLo | (*pDmaSndAdrMi << 8) | (*pDmaSndAdrHi << 16);
+  boolean on = *pDmaSndCtrl & DMASND_CTRL_ON;
+  boolean result = !on || addr == 0 || (addr > playbuffer + MIXBUFFERSIZE/4 && addr <= playbuffer + MIXBUFFERSIZE);
+  //printf("\rba %06lx ad %06lx pl %06p on %d -> %d", base, addr, playbuffer, on, result);
+  return result;
+}
 
 
 //
@@ -547,37 +558,38 @@ void I_UpdateSound( void )
   // Mix current sound data.
   // Data, from raw sound, for right and left.
   register unsigned int	sample;
-  register int		dl;
-  register int		dr;
+  register short	dl;
   
   // Pointers in global mixbuffer, left, right, end.
-  signed short*		leftout;
-  signed short*		rightout;
-  signed short*		leftend;
-  // Step in mixbuffer, left and right, thus two.
-  int				step;
+  signed short*	        out;
+  signed short*	        end;
 
   // Mixing channel index.
-  int				chan;
+  short				chan;
     
-    // Left and right channel
-    //  are in global mixbuffer, alternating.
-    leftout = mixbuffer;
-    rightout = mixbuffer+1;
-    step = 2;
+    // Left and right channel combined in global mixbuffer, alternating.
+    out = (signed short*) mixbuffer;
 
     // Determine end, for left channel only
     //  (right channel is implicit).
-    leftend = mixbuffer + SAMPLECOUNT*step;
+    end = out + SAMPLECOUNT;
+
+    // Optimization: If no channels active, memset to 0 and return.
+    for (chan = 0; chan <= NUM_CHANNELS; chan++) {
+        if (chan == NUM_CHANNELS) {
+            memset(mixbuffer, 0, MIXBUFFERSIZE);
+            return;
+        }
+        if (channels[chan]) break;
+    }   
 
     // Mix sounds into the mixing buffer.
     // Loop over step*SAMPLECOUNT,
     //  that is 512 values for two channels.
-    while (leftout != leftend)
+    while (out != end)
     {
 	// Reset left/right value. 
 	dl = 0;
-	dr = 0;
 
 	// Love thy L2 chache - made this a loop.
 	// Now more channels could be set at compile time
@@ -593,8 +605,7 @@ void I_UpdateSound( void )
 		//  for this channel (sound)
 		//  to the current data.
 		// Adjust volume accordingly.
-		dl += channelleftvol_lookup[ chan ][sample];
-		dr += channelrightvol_lookup[ chan ][sample];
+		dl += (channelleftvol_lookup[ chan ][sample]) << 8 | (channelrightvol_lookup[ chan ][sample] & 0xff);
 		// Increment index ???
 		channelstepremainder[ chan ] += channelstep[ chan ];
 		// MSB is next sample???
@@ -608,30 +619,11 @@ void I_UpdateSound( void )
 	    }
 	}
 	
-	// Clamp to range. Left hardware channel.
-	// Has been char instead of short.
-	// if (dl > 127) *leftout = 127;
-	// else if (dl < -128) *leftout = -128;
-	// else *leftout = dl;
-
-	if (dl > 0x7fff)
-	    *leftout = 0x7fff;
-	else if (dl < -0x8000)
-	    *leftout = -0x8000;
-	else
-	    *leftout = dl;
-
-	// Same for right hardware channel.
-	if (dr > 0x7fff)
-	    *rightout = 0x7fff;
-	else if (dr < -0x8000)
-	    *rightout = -0x8000;
-	else
-	    *rightout = dr;
+        // Write to mixbuffer
+        *out = dl;
 
 	// Increment current pointers in mixbuffer.
-	leftout += step;
-	rightout += step;
+	out++;
     }
 
 #ifdef SNDINTR
@@ -665,8 +657,20 @@ void I_UpdateSound( void )
 void
 I_SubmitSound(void)
 {
-  // Write it to DSP device.
-  write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL);
+  signed char *tmp = lastbuffer;
+  lastbuffer = playbuffer;
+  playbuffer = mixbuffer;
+  mixbuffer = tmp;
+  unsigned long addr = (long) playbuffer;
+  *pDmaSndBasLo = (unsigned char) (addr & 0xff);
+  *pDmaSndBasMi = (unsigned char) ((addr >> 8) & 0xff);
+  *pDmaSndBasHi = (unsigned char) ((addr >> 16) & 0xff);
+  addr += MIXBUFFERSIZE;
+  *pDmaSndEndLo = (unsigned char) (addr & 0xff);
+  *pDmaSndEndMi = (unsigned char) ((addr >> 8) & 0xff);
+  *pDmaSndEndHi = (unsigned char) ((addr >> 16) & 0xff);
+  *pDmaSndCtrl |= DMASND_CTRL_ON | DMASND_CTRL_LOOP;
+  //printf("Snd: %d %d %d %d \r", playbuffer[0], playbuffer[1], playbuffer[2], playbuffer[3]);
 }
 
 
@@ -721,8 +725,7 @@ void I_ShutdownSound(void)
   I_SoundDelTimer();
 #endif
   
-  // Cleaning up -releasing the DSP device.
-  close ( audio_fd );
+  *pDmaSndCtrl = DMASND_CTRL_OFF;
 #endif
 
   // Done.
@@ -761,35 +764,13 @@ I_InitSound()
   
 #ifdef SNDINTR
   fprintf( stderr, "I_SoundSetTimer: %d microsecs\n", SOUND_INTERVAL );
-  //I_SoundSetTimer( SOUND_INTERVAL );
+  I_SoundSetTimer( SOUND_INTERVAL );
 #endif
     
   // Secure and configure sound device first.
   fprintf( stderr, "I_InitSound: ");
-  /*
-  audio_fd = open("/dev/dsp", O_WRONLY);
-  if (audio_fd<0)
-    fprintf(stderr, "Could not open /dev/dsp\n");
-  
-                     
-  i = 11 | (2<<16);                                           
-  myioctl(audio_fd, SNDCTL_DSP_SETFRAGMENT, &i);
-  myioctl(audio_fd, SNDCTL_DSP_RESET, 0);
-  
-  i=SAMPLERATE;
-  
-  myioctl(audio_fd, SNDCTL_DSP_SPEED, &i);
-  
-  i=1;
-  myioctl(audio_fd, SNDCTL_DSP_STEREO, &i);
-  
-  myioctl(audio_fd, SNDCTL_DSP_GETFMTS, &i);
-  
-  if (i&=AFMT_S16_LE)    
-    myioctl(audio_fd, SNDCTL_DSP_SETFMT, &i);
-  else
-    fprintf(stderr, "Could not play signed 16 data\n");
-  */
+  *pDmaSndMode = DMASND_MODE_STEREO | DMASND_MODE_HZ_12517;
+  *pDmaSndCtrl = DMASND_CTRL_OFF;
   fprintf(stderr, " configured audio device\n" );
 
     
@@ -814,9 +795,10 @@ I_InitSound()
 
   fprintf( stderr, " pre-cached all sound data\n");
   
-  // Now initialize mixbuffer with zero.
-  for ( i = 0; i< MIXBUFFERSIZE; i++ )
-    mixbuffer[i] = 0;
+  // Now initialize all audio buffers with zero.
+  for ( i = 0; i< MIXBUFFERSIZE; i++ ) {
+    sndbuffer1[i] = sndbuffer2[i] = sndbuffer3[i] = 0;
+  }
   
   // Finished initialization.
   fprintf(stderr, "I_InitSound: sound module ready\n");
@@ -890,29 +872,6 @@ int I_QrySongPlaying(int handle)
 
 
 
-//
-// Experimental stuff.
-// A Linux timer interrupt, for asynchronous
-//  sound output.
-// I ripped this out of the Timer class in
-//  our Difference Engine, including a few
-//  SUN remains...
-//  
-#ifdef sun
-    typedef     sigset_t        tSigSet;
-#else    
-    typedef     int             tSigSet;
-#endif
-
-
-// We might use SIGVTALRM and ITIMER_VIRTUAL, if the process
-//  time independend timer happens to get lost due to heavy load.
-// SIGALRM and ITIMER_REAL doesn't really work well.
-// There are issues with profiling as well.
-static int /*__itimer_which*/  itimer = ITIMER_REAL;
-
-static int sig = SIGALRM;
-
 // Interrupt handler.
 void I_HandleSoundTimer( int ignore )
 {
@@ -922,9 +881,8 @@ void I_HandleSoundTimer( int ignore )
   // Feed sound device if necesary.
   if ( flag )
   {
-    // See I_SubmitSound().
     // Write it to DSP device.
-    write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL);
+    I_SubmitSound();
 
     // Reset flag counter.
     flag = 0;
@@ -937,40 +895,29 @@ void I_HandleSoundTimer( int ignore )
   return;
 }
 
+static volatile void (**pVblVec)() = (void *)0x70;
+static void (*pOldVblVec)() = 0;
+//static volatile unsigned short *pPalette = (void*)0xff8240;
+
+__attribute__((interrupt)) void vbl_interrupt() {
+  //*pPalette = 0x000f;
+  if (!flag) {
+    I_UpdateSound();
+  }
+  if (I_ShouldSubmitSound()) {
+    I_HandleSoundTimer(0);
+  }
+  //*pPalette = 0x0000;
+}
+
 // Get the interrupt. Set duration in millisecs.
 int I_SoundSetTimer( int duration_of_tick )
 {
-//   // Needed for gametick clockwork.
-//   struct itimerval    value;
-//   struct itimerval    ovalue;
-//   struct sigaction    act;
-//   struct sigaction    oact;
-
-//   int res;
-  
-//   // This sets to SA_ONESHOT and SA_NOMASK, thus we can not use it.
-//   //     signal( _sig, handle_SIG_TICK );
-  
-//   // Now we have to change this attribute for repeated calls.
-//   act.sa_handler = I_HandleSoundTimer;
-// #ifndef sun    
-//   //ac	t.sa_mask = _sig;
-// #endif
-//   act.sa_flags = SA_RESTART;
-  
-//   sigaction( sig, &act, &oact );
-
-//   value.it_interval.tv_sec    = 0;
-//   value.it_interval.tv_usec   = duration_of_tick;
-//   value.it_value.tv_sec       = 0;
-//   value.it_value.tv_usec      = duration_of_tick;
-
-//   // Error is -1.
-//   res = setitimer( itimer, &value, &ovalue );
-
-//   // Debug.
-//   if ( res == -1 )
-//     fprintf( stderr, "I_SoundSetTimer: interrupt n.a.\n");
+  printf("I_SoundSetTimer(%d)\n", duration_of_tick);
+  if (pOldVblVec == 0) {
+    pOldVblVec = *pVblVec;
+  }
+  *pVblVec = vbl_interrupt;
   
   return 0;
 }
@@ -979,7 +926,5 @@ int I_SoundSetTimer( int duration_of_tick )
 // Remove the interrupt. Set duration to zero.
 void I_SoundDelTimer()
 {
-  // Debug.
-  // if ( I_SoundSetTimer( 0 ) == -1)
-  //   fprintf( stderr, "I_SoundDelTimer: failed to remove interrupt. Doh!\n");
+  *pVblVec = pOldVblVec;
 }

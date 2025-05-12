@@ -395,8 +395,14 @@ void D_DoomLoop (void)
 	D_Display ();
 
 #ifndef SNDSERV
+#ifndef SNDINTR
+	if (!I_ShouldSubmitSound())
+	    continue;
+#endif
+#endif
+
+#ifndef SNDSERV
 	// Sound mixing for the buffer is snychronous.
-	// TODO Re-enable sound on ST
 	//I_UpdateSound();
 #endif	
 	// Synchronous sound output is explicitly called.

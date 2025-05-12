@@ -315,8 +315,6 @@ extern const unsigned char subset[16];
 
 void I_InitGraphics(void)
 {
-    printf("Enabling supervisor mode.\n");
-    Super(0L);
     st_screen = Physbase();
     printf("Replacing keyboard interrupt.\n");
     old_interrupt_handler = *(void**)0x118;
