@@ -503,10 +503,6 @@ int			ds_x2;
 
 lighttable_t*		ds_colormap; 
 
-fixed_t			ds_xfrac; 
-fixed_t			ds_yfrac; 
-fixed_t			ds_xstep; 
-fixed_t			ds_ystep;
 
 // start of a 64*64 tile image 
 byte*			ds_source;	
@@ -519,11 +515,8 @@ int			dscount;
 // Draws the actual span.
 void R_DrawSpan (void) 
 { 
-    fixed_t		xfrac;
-    fixed_t		yfrac; 
     byte*		dest; 
     int			count;
-    int			spot; 
 	 
 #ifdef RANGECHECK 
     if (ds_x2 < ds_x1
@@ -537,29 +530,10 @@ void R_DrawSpan (void)
 //	dscount++; 
 #endif 
 
-    
-    xfrac = ds_xfrac; 
-    yfrac = ds_yfrac; 
-	 
     dest = ylookup[ds_y] + columnofs[ds_x1];
-
-    // We do not check for zero spans here?
-    count = ds_x2 - ds_x1; 
-
-    do 
-    {
-	// Current texture index in u,v.
-	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
-
-	// Lookup pixel from flat texture tile,
-	//  re-index using light/colormap.
-	*dest++ = ds_colormap[ds_source[spot]];
-
-	// Next step in u,v.
-	xfrac += ds_xstep; 
-	yfrac += ds_ystep;
-	
-    } while (count--); 
+    count = ds_x2 - ds_x1 + 1; 
+    int color = ds_colormap[ds_source[0]];
+    memset(dest, color, count);
 } 
 
 
@@ -660,29 +634,14 @@ void R_DrawSpanLow (void)
 //	dscount++; 
 #endif 
 	 
-    xfrac = ds_xfrac; 
-    yfrac = ds_yfrac; 
-
     // Blocky mode, need to multiply by 2.
     ds_x1 <<= 1;
     ds_x2 <<= 1;
     
     dest = ylookup[ds_y] + columnofs[ds_x1];
-  
-    
-    count = ds_x2 - ds_x1; 
-    do 
-    { 
-	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
-	// Lowres/blocky mode does it twice,
-	//  while scale is adjusted appropriately.
-	*dest++ = ds_colormap[ds_source[spot]]; 
-	*dest++ = ds_colormap[ds_source[spot]];
-	
-	xfrac += ds_xstep; 
-	yfrac += ds_ystep; 
-
-    } while (count--); 
+    count = ds_x2 - ds_x1 + 1; 
+    int color = ds_colormap[ds_source[0]];
+    memset(dest, color, 2*count);
 }
 
 //

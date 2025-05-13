@@ -67,11 +67,6 @@ extern int		ds_x2;
 
 extern lighttable_t*	ds_colormap;
 
-extern fixed_t		ds_xfrac;
-extern fixed_t		ds_yfrac;
-extern fixed_t		ds_xstep;
-extern fixed_t		ds_ystep;
-
 // start of a 64*64 tile image
 extern byte*		ds_source;		
 

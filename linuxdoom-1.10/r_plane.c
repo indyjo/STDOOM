@@ -142,20 +142,13 @@ R_MapPlane
     {
 	cachedheight[y] = planeheight;
 	distance = cacheddistance[y] = FixedMul (planeheight, yslope[y]);
-	ds_xstep = cachedxstep[y] = FixedMul (distance,basexscale);
-	ds_ystep = cachedystep[y] = FixedMul (distance,baseyscale);
     }
     else
     {
 	distance = cacheddistance[y];
-	ds_xstep = cachedxstep[y];
-	ds_ystep = cachedystep[y];
     }
 	
     length = FixedMul (distance,distscale[x1]);
-    angle = (viewangle + xtoviewangle[x1])>>ANGLETOFINESHIFT;
-    ds_xfrac = viewx + FixedMul(finecosine[angle], length);
-    ds_yfrac = -viewy - FixedMul(finesine[angle], length);
 
     if (fixedcolormap)
 	ds_colormap = fixedcolormap;
