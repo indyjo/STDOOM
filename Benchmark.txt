@@ -11,9 +11,11 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   55181 -> 1.354 fps
+  44434 -> 1.681 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   41867 -> 1.784 fps
+  31812 -> 2.348 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   29912 -> 2.497 fps
