@@ -19,10 +19,10 @@ FEATURES
 - Runs DOOM in 16 colors with dithering.
 - Controllable with keyboard and mouse.
 - Zoomed mode for higher performance (activate by reducing window size using = key or menu).
+- Audio sample playback using STe DMA sound.
 
 NOT IMPLEMENTED
 
-- Audio sample playback
 - Music playback
 - Network gameplay
 
@@ -34,3 +34,9 @@ You need a C compiler and GNU Make. I recommend compiling with Thorsten Otto's C
 In order to compile, go into the "linuxdoom-1.10" directory, have CC point to m68k-atari-mint-gcc
 and run "make".
 
+HOW TO BENCHMARK
+- Rename STDOOM.TOS to STDOOM.TTP
+- On start, enter parameters: `-timedemo demo3` (without the quotes)
+- The demo plays. When it's finished, a message says:
+  Error: timed 2134 gametics in x realtics
+- x is the time elapsed in 1/35th of a second. Calculate FPS: 35*2134/x

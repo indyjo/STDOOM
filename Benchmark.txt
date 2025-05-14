@@ -1,0 +1,28 @@
+STDOOM started with -timedemo demo3
+
+Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
+  112087 -> 0.666 fps
+
+Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
+  112292 -> 0.665 fps
+
+Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
+  85036 -> 0.878 fps
+
+Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
+  55181 -> 1.354 fps
+
+Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
+  41867 -> 1.784 fps
+
+Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
+  29912 -> 2.497 fps
+
+Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
+  22787 -> 3.278 fps
+
+Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
+  17768 -> 4.204 fps
+
+Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
+  12927 -> 5.778 fps 
