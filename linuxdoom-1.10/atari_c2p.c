@@ -296,7 +296,7 @@ static unsigned short stcolor(unsigned char r, unsigned char g, unsigned char b)
     return entry;
 }
 
-void install_palette(unsigned short *palette) {
+void install_palette(const unsigned short *palette) {
     volatile unsigned short *reg = (unsigned short*) 0xff8240;
 #if USE_MIDRES
     short numColors = 4;
@@ -304,6 +304,16 @@ void install_palette(unsigned short *palette) {
     short numColors = 16;
 #endif
     for (short n=0; n<numColors; n++) *reg++ = *palette++;
+}
+
+void save_palette(unsigned short *palette) {
+    volatile unsigned short *reg = (unsigned short*) 0xff8240;
+#if USE_MIDRES
+    short numColors = 4;
+#else
+    short numColors = 16;
+#endif
+    for (short n=0; n<numColors; n++) *palette++ = *reg++;
 }
 
 void init_c2p_table() {

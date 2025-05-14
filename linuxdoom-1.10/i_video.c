@@ -39,11 +39,13 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 byte		*st_screen;
 static void *old_interrupt_handler;
+static unsigned short old_palette[16];
 
 
 void I_ShutdownGraphics(void)
 {
     *(void **)0x118 = old_interrupt_handler;
+    install_palette(old_palette);
 }
 
 
@@ -320,6 +322,7 @@ void I_InitGraphics(void)
     old_interrupt_handler = *(void**)0x118;
     *(void**)0x118 = keyboard_interrupt;
     printf("Initializing c2p tables...\n");
+    save_palette(old_palette);
     init_c2p_table();
     draw_palette_table(st_screen);
     printf ("Done.\n");

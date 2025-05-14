@@ -178,6 +178,6 @@ void I_Error (char *error, ...)
 
     D_QuitNetGame ();
     I_ShutdownGraphics();
-    
+    getchar();
     exit(-1);
 }
