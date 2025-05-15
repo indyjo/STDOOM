@@ -962,7 +962,7 @@ void M_DrawOptions(void)
 		 10,mouseSensitivity);
 	
     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
-		 9,screenSize);
+		 10,screenSize);
 }
 
 void M_Options(int choice)
@@ -1161,7 +1161,7 @@ void M_SizeDisplay(int choice)
 	}
 	break;
       case 1:
-	if (screenSize < 8)
+	if (screenSize < 9)
 	{
 	    screenblocks++;
 	    screenSize++;
@@ -1851,7 +1851,7 @@ void M_Init (void)
     itemOn = currentMenu->lastOn;
     whichSkull = 0;
     skullAnimCounter = 10;
-    screenSize = screenblocks - 3;
+    screenSize = screenblocks - 2;
     messageToPrint = 0;
     messageString = NULL;
     messageLastMenuActive = menuactive;

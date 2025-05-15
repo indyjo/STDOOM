@@ -684,6 +684,11 @@ void R_ExecuteSetViewSize (void)
 	scaledviewwidth = SCREENWIDTH;
 	viewheight = SCREENHEIGHT;
     }
+    else if (setblocks == 2)
+    {
+	scaledviewwidth = setblocks*32 + 16;
+	viewheight = ((2*setblocks*168 + 168)/20)&~7;
+    }
     else
     {
 	scaledviewwidth = setblocks*32;

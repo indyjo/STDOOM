@@ -2,12 +2,15 @@ STDOOM started with -timedemo demo3
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   112087 -> 0.666 fps
+  90210 -> 0.828 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
   112292 -> 0.665 fps
+  90371 -> 0.826 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   85036 -> 0.878 fps
+  54567 -> 1.369 fps (4x zoom)
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   55181 -> 1.354 fps
@@ -16,15 +19,22 @@ Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   41867 -> 1.784 fps
   31812 -> 2.348 fps (FixedMul, FixedDiv from Doom8088)
+  26946 -> 2.772 fps (4x zoom)
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   29912 -> 2.497 fps
+  23908 -> 3.124 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   22787 -> 3.278 fps
+  17381 -> 4.297 fps (FixedMul, FixedDiv from Doom8088)
+  15362 -> 4.861 fps (4x zoom)
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   17768 -> 4.204 fps
+  19088 -> 3.913 fps (FixedMul, FixedDiv from Doom8088)
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   12927 -> 5.778 fps 
+  13936 -> 5.360 fps (FixedMul, FixedDiv from Doom8088)
+  12213 -> 6.116 fps (4x zoom)

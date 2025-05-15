@@ -282,6 +282,10 @@ static unsigned long c2p_table[4][256][8];
 // [phase 0..3][color 0..255][pixel 0..3]
 static unsigned long c2p_2x_table[4][256][4];
 
+// C2P table for quarter resolution (4x4 pixels)
+// [phase 0..3][color 0..255][pixel 0..1]
+static unsigned long c2p_4x_table[4][256][2];
+
 static unsigned short convert_channel(unsigned char v) {
     unsigned short r = (v & 0xe0) >> 5; // Bits 7,6,5 shifted to 2,1,0
     r |= (v & 0x10) >> 1; // STe color bit
@@ -316,15 +320,47 @@ void save_palette(unsigned short *palette) {
     for (short n=0; n<numColors; n++) *palette++ = *reg++;
 }
 
+
+/// @brief Computes a movep-compatible Bayer-dithered pixel given a set of mixing weights.
+/// @param weights An array of mixing weights, each weight corresponding to a palette color. Must sum up to 16.
+/// @param phase The vertical phase within the bayer pattern (0..3).
+/// @param px The pixel within the group of 8 pixels covered by a movep-DWORD (0..7).
+/// @return A DWORD that can be written into an Atari ST lo-res framebuffer using movep.l.
+unsigned long bayer4_pdata(const unsigned char *weights, short phase, short px) {
+	unsigned char bayer[4][4] = {
+		{0,  8, 2,10},
+		{12, 4,14, 6},
+		{ 3,11, 1, 9},
+		{15, 7,13, 5}
+	};
+    // Find the ST palette color index to fill the pixel with.
+    unsigned char bayer_lwb = 0, bayer_upb = 0;
+    short c;
+    for (c=0; c<16; c++) {
+        bayer_upb += weights[c];
+        if (bayer[phase][px%4] >= bayer_lwb && bayer[phase][px%4] < bayer_upb) {
+            break; // Search for color is finished.
+        }
+        bayer_lwb += weights[c];
+    }
+    // Compute a pdata-compatible pixel representation.
+    unsigned long pdata = 0;
+    if (c & 1) pdata |= 0x01000000;
+    if (c & 2) pdata |= 0x00010000;
+    if (c & 4) pdata |= 0x00000100;
+    if (c & 8) pdata |= 0x00000001;
+    return pdata << (7-px);
+}
+
 void init_c2p_table() {
+    set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+#if USE_MIDRES
 	unsigned short bayer[4][4] = {
 		{0,  8, 2,10},
 		{12, 4,14, 6},
 		{ 3,11, 1, 9},
 		{15, 7,13, 5}
 	};
-    set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
-#if USE_MIDRES
     unsigned short stpalette[] = {stcolor(0,0,0), stcolor(85,85,85), stcolor(170,170,170), stcolor(255,255,255)};
     install_palette(stpalette);
 
@@ -375,50 +411,25 @@ void init_c2p_table() {
 	for (int i=0; i<256; i++) {
         unsigned char *weights = mix_weights[i];
         for (int phase=0; phase<4; phase++) {
+            // Fill 1x1 c2p table
             for (int px=0; px<8; px++) {
-                // Find the ST palette color index to fill the pixel with.
-                int bayer_lwb = 0, bayer_upb = 0;
-                for (int c=0; c<16; c++) {
-                    bayer_upb += weights[c];
-                    if (bayer[phase][px%4] >= bayer_lwb && bayer[phase][px%4] < bayer_upb) {
-                        unsigned long pdata = 0;
-                        if (c & 1) pdata |= 0x01000000;
-                        if (c & 2) pdata |= 0x00010000;
-                        if (c & 4) pdata |= 0x00000100;
-                        if (c & 8) pdata |= 0x00000001;
-                        pdata <<= 7-px;
-                        c2p_table[phase][i][px] = pdata;
-                        break; // Search for color is finished. Continue with next pixel.
-                    }
-                    bayer_lwb += weights[c];
-                }
+                c2p_table[phase][i][px] = bayer4_pdata(weights, phase, px);
             }
-        }
-	}
-	for (int i=0; i<256; i++) {
-        unsigned char *weights = mix_weights[i];
-        for (int phase=0; phase<4; phase++) {
+            // Fill 2x2 c2p table
             for (int ipx=0; ipx<4; ipx++) {
                 unsigned long ipx_pdata = 0;
                 for (int opx=2*ipx; opx<2*ipx+2; opx++) {
-                    // Find the ST palette color index to fill the pixel with.
-                    int bayer_lwb = 0, bayer_upb = 0;
-                    for (int c=0; c<16; c++) {
-                        bayer_upb += weights[c];
-                        if (bayer[phase][opx%4] >= bayer_lwb && bayer[phase][opx%4] < bayer_upb) {
-                            unsigned long pdata = 0;
-                            if (c & 1) pdata |= 0x01000000;
-                            if (c & 2) pdata |= 0x00010000;
-                            if (c & 4) pdata |= 0x00000100;
-                            if (c & 8) pdata |= 0x00000001;
-                            pdata <<= 7-opx;
-                            ipx_pdata |= pdata;
-                            break; // Search for color is finished. Continue with next pixel.
-                        }
-                        bayer_lwb += weights[c];
-                    }
+                    ipx_pdata |= bayer4_pdata(weights, phase, opx);
                 }
                 c2p_2x_table[phase][i][ipx] = ipx_pdata;
+            }
+            // Fill 4x4 c2p table
+            for (int ipx=0; ipx<2; ipx++) {
+                unsigned long ipx_pdata = 0;
+                for (int opx=4*ipx; opx<4*ipx+4; opx++) {
+                    ipx_pdata |= bayer4_pdata(weights, phase, opx);
+                }
+                c2p_4x_table[phase][i][ipx] = ipx_pdata;
             }
         }
 	}
@@ -652,6 +663,65 @@ static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigne
         : "d0", "d1", "d2", "memory"
     );
 }
+
+static void c2p_4x(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][2]) {
+    if (pixels < 4) return;
+    short groups = pixels / 4 - 1;
+    unsigned long pdata = 0; // 32 bits of planar pixel data
+    unsigned short mask = 0x00ff<<3; // Mask for isolating table indices (after shifting)
+    asm volatile (
+        // Beginning of dbra loop
+        "0:                                         \n\t"
+
+        // Read four consecutive pixels from buffer into two 16 bit registers
+        "movem.w    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Pixel 0
+        "move.w     %%d0,%%d2                       \n\t"
+        "lsr.w      #5,%%d2                         \n\t"
+        "and.w      %[mask],%%d2                    \n\t"
+        "move.l     (%[table],%%d2.w), %[pdata]     \n\t"
+
+        // Pixel 1
+        "lsl.w      #3,%%d0                         \n\t"
+        "and.w      %[mask],%%d0                    \n\t"
+        "or.l       4(%[table],%%d0.w), %[pdata]    \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 0(%[out])             \n\t"
+
+        // Pixel 2
+        "move.w     %%d1,%%d2                       \n\t"
+        "lsr.w      #5,%%d2                         \n\t"
+        "and.w      %[mask],%%d2                    \n\t"
+        "move.l     0(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Pixel 3
+        "lsl.w      #3,%%d1                         \n\t"
+        "and.w      %[mask],%%d1                    \n\t"
+        "or.l       4(%[table],%%d1.w), %[pdata]    \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata], 1(%[out])             \n\t"
+
+        // Advance out address by 16 pixels (8 bytes) and loop
+        "lea        8(%[out]), %[out]               \n\t"
+        "dbra.w     %[groups],0b                    \n\t"
+
+        // Outputs
+        : [out] "+a" (out)
+        , [in] "+a" (in)
+        , [pdata] "+d" (pdata)
+        , [groups] "+d" (groups)
+        
+        // Inputs
+        : [table] "a" (table)
+        , [mask] "d" (mask)
+        
+        // Clobbers
+        : "d0", "d1", "d2", "memory"
+    );
+}
 #endif
 
 void set_doom_palette(const unsigned char *colors) {
@@ -703,8 +773,16 @@ void c2p_screen(unsigned char *out, const unsigned char *in) {
         && !menuactive && !inhelpscreens && !automapactive;
     if (zoom_allowed && viewwidth <= SCREENWIDTH/2) {
         splitline = 200-32;
-        for (int line = 0; line < splitline; line++ ) {
-            c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
+        if (viewwidth <= SCREENWIDTH/4) {
+            // 4x zoom
+            for (int line = 0; line < splitline; line++ ) {
+                c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[line&3]);
+            }
+        } else {
+            // 2x zoom
+            for (int line = 0; line < splitline; line++ ) {
+                c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
+            }
         }
     }
     static int interlace_phase = 0;
