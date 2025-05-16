@@ -32,7 +32,7 @@ float find_best_dist(int weight_left, vec3 delta, const float *target, float acc
 			//printf("Error: no more palette weights remaining and weight left: %d\n", weight_left);
 			return -1;
 		}
-		return veclength(delta) + accum_dev;
+		return 2*veclength(delta) + 3*accum_dev;
 	}
 
 	int best_weight = 0;
@@ -81,7 +81,7 @@ float find_best_dist(int weight_left, vec3 delta, const float *target, float acc
 int main(int argc, const char** argv) {
 	// Apply gamma to emphasize the darker parts
 	for (int i=0; i<768; i++) {
-		colors[i] = powf(PLAYPAL[i] / 256.0f, 2.2f);
+		colors[i] = powf(PLAYPAL[i] / 256.0f, 1.6f);
 	}
 	// Convert to YUV in order to emphasize Y (luma) over UV (chroma)
 	for (int i=0; i<256; i++) {
@@ -91,7 +91,7 @@ int main(int argc, const char** argv) {
 		float y = 0.299f*r + 0.587f*g + 0.114f*b;
 		float u = 0.492f*(b-y);
 		float v = 0.877f*(r-y);
-		colors[3*i + 0] = 4*y; // emphasize y
+		colors[3*i + 0] = 2*y; // emphasize y
 		colors[3*i + 1] = u;
 		colors[3*i + 2] = v;
 	}
