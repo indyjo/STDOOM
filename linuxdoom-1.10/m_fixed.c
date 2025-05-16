@@ -46,25 +46,29 @@ FixedMul
 ( fixed_t	a,
   fixed_t	b )
 {
-	uint16_t alw = a;
-	int16_t ahw = a >> FRACBITS;
-	uint16_t blw = b;
-	int16_t bhw = b >> FRACBITS;
+#ifdef __M68000__
+    uint16_t alw = a;
+    int16_t ahw = a >> FRACBITS;
+    uint16_t blw = b;
+    int16_t bhw = b >> FRACBITS;
 
-	if (bhw == 0) {
-		uint32_t ll = (uint32_t) alw * blw;
-		int32_t hl = ( int32_t) ahw * blw;
-		return (ll >> FRACBITS) + hl;
-	} else if (alw == 0) {
-		//return ahw * b;
-		int32_t hl = ( int32_t) ahw * blw;
-		int32_t hh = ( int32_t) ahw * bhw;
-		return hl + (hh << FRACBITS);
-	} else {
-		uint32_t ll = (uint32_t) alw * blw;
-		int32_t hl = ( int32_t) ahw * blw;
-		return (a * bhw) + (ll >> FRACBITS) + hl;
-	}
+    if (bhw == 0) {
+        uint32_t ll = (uint32_t) alw * blw;
+        int32_t hl = ( int32_t) ahw * blw;
+        return (ll >> FRACBITS) + hl;
+    } else if (alw == 0) {
+        //return ahw * b;
+        int32_t hl = ( int32_t) ahw * blw;
+        int32_t hh = ( int32_t) ahw * bhw;
+        return hl + (hh << FRACBITS);
+    } else {
+        uint32_t ll = (uint32_t) alw * blw;
+        int32_t hl = ( int32_t) ahw * blw;
+        return (a * bhw) + (ll >> FRACBITS) + hl;
+    }
+#else
+    return ((long long) a * (long long) b) >> FRACBITS;
+#endif
 }
 
 
@@ -79,11 +83,15 @@ FixedDiv
   fixed_t	b )
 {
     if ( (abs(a)>>14) >= abs(b))
-	return (a^b)<0 ? MININT : MAXINT;
+        return (a^b)<0 ? MININT : MAXINT;
+#ifdef __M68000__
     if (a < 0)
         return b<0?FixedDiv2(-a, -b):-FixedDiv2(-a, b);
     else
         return b<0?-FixedDiv2(a, -b):FixedDiv2(a, b);
+#else
+    return FixedDiv2 (a,b);
+#endif
 }
 
 
@@ -93,47 +101,57 @@ FixedDiv2
 ( fixed_t	a,
   fixed_t	b )
 {
-	if (a < 0)
-	{
-		a = -a;
-		b = -b;
-	}
+#ifdef __M68000__
+    if (a < 0)
+    {
+        a = -a;
+        b = -b;
+    }
 
-	uint16_t ibit = 1;
-	while (b < a)
-	{
-		b    <<= 1;
-		ibit <<= 1;
-	}
+    uint16_t ibit = 1;
+    while (b < a)
+    {
+        b    <<= 1;
+        ibit <<= 1;
+    }
 
-	int16_t ch = 0;
-	for (; ibit != 0; ibit >>= 1)
-	{
-		if (a >= b)
-		{
-			a  -= b;
-			ch |= ibit;
-		}
-		a <<= 1;
-	}
+    int16_t ch = 0;
+    for (; ibit != 0; ibit >>= 1)
+    {
+        if (a >= b)
+        {
+            a  -= b;
+            ch |= ibit;
+        }
+        a <<= 1;
+    }
 
-	uint16_t cl = 0;
-	if (a >= b) {a -= b; cl |= 0x8000;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x4000;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x2000;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x1000;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0800;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0400;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0200;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0100;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0080;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0040;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0020;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0010;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0008;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0004;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0002;} a <<= 1;
-	if (a >= b) {a -= b; cl |= 0x0001;}
+    uint16_t cl = 0;
+    if (a >= b) {a -= b; cl |= 0x8000;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x4000;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x2000;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x1000;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0800;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0400;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0200;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0100;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0080;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0040;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0020;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0010;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0008;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0004;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0002;} a <<= 1;
+    if (a >= b) {a -= b; cl |= 0x0001;}
 
-	return (((fixed_t)ch) << FRACBITS) | cl;
+    return (((fixed_t)ch) << FRACBITS) | cl;
+#else
+    double c;
+
+    c = ((double)a) / ((double)b) * FRACUNIT;
+
+    if (c >= 2147483648.0 || c < -2147483648.0)
+        I_Error("FixedDiv: divide by zero");
+    return (fixed_t) c;
+#endif
 }

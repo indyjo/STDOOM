@@ -1,40 +1,48 @@
 STDOOM started with -timedemo demo3
 
+History of versions under Benchmark
+- V0 Baseline version (2025-05-14)
+- V1 FixedMul, FixedDiv from Doom8088
+- V2 4x zoom
+- V3 Rollback of Doom8088 changes for 020 CPUs and onward
+
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
-  112087 -> 0.666 fps
-  90210 -> 0.828 fps (FixedMul, FixedDiv from Doom8088)
+  V0 112087 -> 0.666 fps
+  V1  90210 -> 0.828 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
-  112292 -> 0.665 fps
-  90371 -> 0.826 fps (FixedMul, FixedDiv from Doom8088)
+  V0 112292 -> 0.665 fps
+  V1  90371 -> 0.826 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
-  85036 -> 0.878 fps
-  54567 -> 1.369 fps (4x zoom)
+  V0  85036 -> 0.878 fps
+  V2  54567 -> 1.369 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
-  55181 -> 1.354 fps
-  44434 -> 1.681 fps (FixedMul, FixedDiv from Doom8088)
+  V0  55181 -> 1.354 fps
+  V1  44434 -> 1.681 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
-  41867 -> 1.784 fps
-  31812 -> 2.348 fps (FixedMul, FixedDiv from Doom8088)
-  26946 -> 2.772 fps (4x zoom)
+  V0  41867 -> 1.784 fps
+  V1  31812 -> 2.348 fps
+  V2  26946 -> 2.772 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
-  29912 -> 2.497 fps
-  23908 -> 3.124 fps (FixedMul, FixedDiv from Doom8088)
+  V0  29912 -> 2.497 fps
+  V1  23908 -> 3.124 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
-  22787 -> 3.278 fps
-  17381 -> 4.297 fps (FixedMul, FixedDiv from Doom8088)
-  15362 -> 4.861 fps (4x zoom)
+  V0  22787 -> 3.278 fps
+  V1  17381 -> 4.297 fps
+  V2  15362 -> 4.861 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
-  17768 -> 4.204 fps
-  19088 -> 3.913 fps (FixedMul, FixedDiv from Doom8088)
+  V0  17768 -> 4.204 fps
+  V1  19088 -> 3.913 fps
+  V3  17794 -> 4.197 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
-  12927 -> 5.778 fps 
-  13936 -> 5.360 fps (FixedMul, FixedDiv from Doom8088)
-  12213 -> 6.116 fps (4x zoom)
+  V0  12927 -> 5.778 fps
+  V1  13936 -> 5.360 fps
+  V2  12213 -> 6.116 fps
+  V3  11244 -> 6.643 fps
