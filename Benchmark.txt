@@ -5,6 +5,7 @@ History of versions under Benchmark
 - V1 FixedMul, FixedDiv from Doom8088
 - V2 4x zoom
 - V3 Rollback of Doom8088 changes for 020 CPUs and onward
+- V4 Zero CPU for sound mixing in silence
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V0 112087 -> 0.666 fps
@@ -17,6 +18,7 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  85036 -> 0.878 fps
   V2  54567 -> 1.369 fps
+  V4  53979 -> 1.384 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V0  55181 -> 1.354 fps

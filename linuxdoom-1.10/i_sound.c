@@ -138,7 +138,7 @@ int 		lengths[NUMSFX];
 //           - playbuffer points to the one that has most recently been sent to DMA sound
 //           - lastbuffer points to the one that was playing before the current playbuffer, but which
 //             might still be being finished by the DMA sound
-signed char     sndbuffer1[MIXBUFFERSIZE], sndbuffer2[MIXBUFFERSIZE], sndbuffer3[MIXBUFFERSIZE];
+signed char     zerobuffer[MIXBUFFERSIZE], sndbuffer1[MIXBUFFERSIZE], sndbuffer2[MIXBUFFERSIZE], sndbuffer3[MIXBUFFERSIZE];
 signed char	*mixbuffer = sndbuffer1, *playbuffer = sndbuffer2, *lastbuffer = sndbuffer3;
 
 
@@ -532,7 +532,7 @@ int I_SoundIsPlaying(int handle)
 __attribute_noinline__ boolean I_ShouldSubmitSound() {
   unsigned long addr = *pDmaSndAdrLo | (*pDmaSndAdrMi << 8) | (*pDmaSndAdrHi << 16);
   // Sometimes we'll see a runaway DMA sound chip. Stop it in its tracks!
-  if (addr < (unsigned long) sndbuffer1 || addr > (unsigned long) sndbuffer3 + MIXBUFFERSIZE) {
+  if (addr < (unsigned long) zerobuffer || addr > (unsigned long) sndbuffer3 + MIXBUFFERSIZE) {
         *pDmaSndCtrl &= ~DMASND_CTRL_ON;
         return 1;
   }
@@ -597,8 +597,8 @@ void I_UpdateSound( void )
     next_active_channel[last_active_channel] = NUM_CHANNELS;
 
     if (num_active_channels == 0) {
-        // Optimization: If no channels active, memset to 0 and return.
-        memset(mixbuffer, 0, MIXBUFFERSIZE);
+        // Optimization: If no channels active, use the pre-initialized zero frame.
+        mixbuffer = zerobuffer;
         out = end;
     } else if (num_active_channels == 1) {
         // Optimization: If exactly one channel active, don't mix
@@ -710,6 +710,19 @@ void
 I_SubmitSound(void)
 {
   signed char *tmp = lastbuffer;
+  if (tmp == zerobuffer) {
+    // If I_UpdateSound took the shortcut, i.e. it set mixbuffer=zerobuffer, one of the
+    // sndbufferN buffers got lost. Search for a free one.
+    if (playbuffer == sndbuffer1) {
+      tmp = mixbuffer == sndbuffer2 ? sndbuffer3 : sndbuffer2;
+    } else if (playbuffer == sndbuffer2) {
+      tmp = mixbuffer == sndbuffer1 ? sndbuffer3 : sndbuffer1;
+    } else if (mixbuffer == sndbuffer1) {
+      tmp = sndbuffer2;
+    } else {
+      tmp = sndbuffer1;
+    }
+  }
   lastbuffer = playbuffer;
   playbuffer = mixbuffer;
   mixbuffer = tmp;
@@ -849,7 +862,7 @@ I_InitSound()
   
   // Now initialize all audio buffers with zero.
   for ( i = 0; i< MIXBUFFERSIZE; i++ ) {
-    sndbuffer1[i] = sndbuffer2[i] = sndbuffer3[i] = 0;
+    zerobuffer[i] = sndbuffer1[i] = sndbuffer2[i] = sndbuffer3[i] = 0;
   }
   
   // Finished initialization.
