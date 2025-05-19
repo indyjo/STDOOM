@@ -107,6 +107,7 @@ void I_Init (void)
     printf("I_Init: Enabling supervisor mode.\n");
     Super(0L);
     I_InitSound();
+    I_InitMusic();
     //  I_InitGraphics();
 }
 
