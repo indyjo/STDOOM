@@ -16,6 +16,7 @@ O=atari
 # not too sophisticated dependency
 OBJS=				\
 		$(O)/atari_c2p.o		\
+		$(O)/atari_ym.o		\
 		$(O)/doomdef.o		\
 		$(O)/doomstat.o		\
 		$(O)/dstrings.o		\

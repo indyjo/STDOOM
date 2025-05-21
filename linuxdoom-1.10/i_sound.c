@@ -56,6 +56,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include "m_misc.h"
 #include "m_swap.h"
 #include "w_wad.h"
+#include "atari_ym.h"
 
 #include "doomdef.h"
 
@@ -179,58 +180,6 @@ char		vol_lookup[128*256];
 // Hardware left and right channel volume lookup.
 char*		channelleftvol_lookup[NUM_CHANNELS];
 char*		channelrightvol_lookup[NUM_CHANNELS];
-
-// Contains all data needed to drive a single YM-2149 hardware channel
-typedef struct {
-  // Number of ticks remaining (32767 for play until release). 0 means not playing.
-  short ticks_remaining;
-  // MUS Channel
-  unsigned char channel;
-  // MUS Note 0..127
-  unsigned char note;
-  // MUS Volume 0..127
-  unsigned char volume;
-  // MUS Pitch bend (0..255)
-  unsigned char pitch_bend;
-  // Index of YM channel
-  unsigned char ymidx;
-} ymmusic_channel_t;
-
-#define YMMUSIC_PLAY 1
-#define YMMUSIC_LOOP 2
-#define YMMUSIC_STOP 4
-#define YMMUSIC_READ_DELAY 16
-
-#define YMMUSIC_PER_BYTE_PENALTY 9
-
-// Set by gameloop when a music change is requested.
-static unsigned char *ymmusic_data_cmd=NULL;
-static unsigned short ymmusic_state_cmd=0;
-
-// Incremented by gameloop before making any changes (to ensure atomicity).
-static unsigned short ymmusic_cmd_nr_begin=0;
-// Incremented by gameloop after making any changes (to ensure atomicity).
-static unsigned short ymmusic_cmd_nr_end=0;
-
-// Set by interrupt on handling a request.
-static unsigned char *ymmusic_data=NULL;
-static unsigned char *ymmusic_ptr=NULL;
-static unsigned char *ymmusic_end=NULL;
-static unsigned short ymmusic_state=0;
-static unsigned short ymmusic_wait=0;
-static unsigned short ymmusic_wait_remainder=0;
-static ymmusic_channel_t ymmusic_channels[3];
-
-// Incremented by interrupt if any request is processed.
-static unsigned short ymmusic_ack_nr=0;
-
-// YM2149 sound chip access
-static volatile unsigned char *pPsgSndCtrl = (void*) 0xff8800;
-static volatile unsigned char *pPsgSndData = (void*) 0xff8802;
-
-// Divisor table for MUS notes * 4 bit precision for pitch bend
-// [note 0..127][pitch bend 0..15]
-static short ymmusic_divisors[128][16];
 
 //
 // This function loads the sound data from the WAD lump,
@@ -919,32 +868,9 @@ I_InitSound()
 #endif
 }
 
-
-void ymmusic_reset() {
-  // Initialize mixer: disable all noise and tone
-  *pPsgSndCtrl = 7;
-  *pPsgSndData = (*pPsgSndCtrl & 0b11000000) | 0b00111111;
-
-  for (int i=0; i<sizeof(ymmusic_channels)/sizeof(ymmusic_channel_t); i++) {
-        ymmusic_channels[i].ticks_remaining = 0;
-        ymmusic_channels[i].channel = 0xff;
-        ymmusic_channels[i].ymidx = i;
-  }
-}
-
 void I_InitMusic(void)		{
   fprintf(stderr, "I_InitMusic: [        ]\033D\033D\033D\033D\033D\033D\033D\033D\033D");
-  ymmusic_reset();
-  double a = 125000.0 / 440.0;
-  double b = 1.0 / (16.0 * 12.0);
-  for (short note = 0; note<128; note++) {
-    if (note%16 == 15) {
-      fprintf(stderr, ".");
-    }
-    for (short bend = 0; bend < 16; bend++) {
-      ymmusic_divisors[note][bend] = (short) ceil(a * pow(2.0, b * (16*(69-note) + bend)));
-    }
-  }
+  ymmusic_init();
   fprintf(stderr, "] done.\n");
 }
 void I_ShutdownMusic(void)	{ }
@@ -1007,258 +933,6 @@ int I_QrySongPlaying(int handle)
   return ymmusic_state & YMMUSIC_PLAY;
 }
 
-static void ymmusic_play_note(unsigned char channel, unsigned char note, unsigned char use_volume, unsigned char volume) {
-  if (volume > 127) volume = 127;
-  ymmusic_channel_t *ymchannel=NULL;
-  // First try to find a YM-channel that is already playing this channel.
-  // It's ok to not support polyphonic channels for now.
-  for (int i=0; i<3; i++) {
-    if (ymmusic_channels[i].channel == channel) {
-      ymchannel = ymmusic_channels + i;
-      goto found;
-    }
-  }
-  // If that fails, try to find a muted channel
-  for (int i=0; i<3; i++) {
-    if (ymmusic_channels[i].ticks_remaining == 0) {
-      ymchannel = ymmusic_channels + i;
-      goto found;
-    }
-  }
-  // If it's a primary channel, we can try to replace a secondary channel. Take the oldest one.
-  if (channel < 10) {
-    for (int i=0; i<3; i++) {
-      // Also a primary channel? Skip!
-      if (ymmusic_channels[i].channel < 10)
-        continue;
-      if (!ymchannel || ymchannel->ticks_remaining > ymmusic_channels[i].ticks_remaining)
-        ymchannel = ymmusic_channels + i;
-    }
-    if (ymchannel)
-      goto found;
-  }
-  // No appropriate YM-2149 channel?
-  return;
-
-  // We have a channel.
-found:
-
-  if (use_volume) {
-    ymchannel->volume = volume;
-  } else if (ymchannel->channel == channel) {
-    // Take previous volume if we already had this channel playing.
-  } else {
-    // Initialize volume to max value
-    ymchannel->volume = 127;
-  }
-  ymchannel->channel = channel;
-  ymchannel->note = note;
-  ymchannel->pitch_bend = 128;
-  // Set the note to play for about half a second until different instruments are modeled.
-  ymchannel->ticks_remaining = channel == 15 ? 5 : 25;
-
-  // Mixer: enable
-  *pPsgSndCtrl = 7;
-  *pPsgSndData = *pPsgSndCtrl & ~(1 << ymchannel->ymidx);
-}
-
-static void ymmusic_release_note(unsigned char channel, unsigned char note) {
-  for (int i=0; i<3; i++) {
-    if (ymmusic_channels[i].channel == channel && ymmusic_channels[i].note == note) {
-      ymmusic_channels[i].ticks_remaining = 0;
-      return;
-    }
-  }
-}
-
-static void ymmusic_pitch_bend(unsigned char channel, unsigned char pitch_bend) {
-  for (int i=0; i<3; i++) {
-    if (ymmusic_channels[i].channel == channel) {
-      ymmusic_channels[i].pitch_bend = pitch_bend;
-    }
-  }
-}
-
-static void ymmusic_volume(unsigned char channel, unsigned char volume) {
-  // TODO: Apply to a MUS channel, not only to a YM-channel
-  for (int i=0; i<3; i++) {
-    if (ymmusic_channels[i].channel == channel) {
-      ymmusic_channels[i].volume = volume;
-    }
-  }
-}
-
-
-static void ymmusic_controller(unsigned char channel, unsigned char control, unsigned char value) {
-  if (control == 0) {
-    // Change instrument: ignore for now
-  } else if (control == 3) {
-    ymmusic_volume(channel, value);
-  } else if (control == 4) {
-    // Pan: ignore
-  } else {
-    fprintf(stderr, "\rC %d %d %d", channel, control, value);
-  }
-}
-
-// Called cyclically to drive the internal playback state and to push commands to YM-2149 hardware.
-static void ymmusic_update()
-{
-  if (ymmusic_cmd_nr_end != ymmusic_ack_nr && ymmusic_cmd_nr_end == ymmusic_cmd_nr_begin) {
-    // A command has been received and it is consistent.
-    if (ymmusic_data != ymmusic_data_cmd) {
-        ymmusic_data = ymmusic_data_cmd;
-        ymmusic_ptr = NULL;
-        ymmusic_reset();
-    }
-    if (ymmusic_state != ymmusic_state_cmd) {
-        ymmusic_state = ymmusic_state_cmd;
-    }
-    ymmusic_ack_nr = ymmusic_cmd_nr_end;
-  }
-
-  // Skip music data header
-  if (ymmusic_data != NULL && ymmusic_ptr == NULL) {
-    if (ymmusic_data[0] == 'M' && ymmusic_data[1] == 'U' && ymmusic_data[2] == 'S' && ymmusic_data[3] == 0x1a) {
-      unsigned short lenSong = SHORT(*(unsigned short*)(ymmusic_data+4));
-      unsigned short offSong = SHORT(*(unsigned short*)(ymmusic_data+6));
-      ymmusic_end = ymmusic_data + offSong + lenSong;
-      ymmusic_ptr = ymmusic_data + offSong;
-    }
-  }
-
-  // No cursor? Do nothing.
-  if (!ymmusic_ptr) {
-    ymmusic_reset();
-    return;
-  }
-
-  // Not playing? Do nothing.
-  if (!(ymmusic_state & YMMUSIC_PLAY)) {
-    ymmusic_reset();
-    return;
-  }
-
-  // We're playing, advance hardware channels
-  for (int i=0; i<3; i++) {
-    ymmusic_channel_t *ymchannel = ymmusic_channels + i;
-    if (ymchannel->ticks_remaining == 0) {
-      continue;
-    }
-    // Frequency
-    short divisor;
-    if (ymchannel->pitch_bend < 128 - 8) {
-      divisor = ymmusic_divisors[ymchannel->note - 1][(ymchannel->pitch_bend + 7) >> 3];
-    } else {
-      divisor = ymmusic_divisors[ymchannel->note][(ymchannel->pitch_bend - 8) >> 8];
-    }
-    *pPsgSndCtrl = 0 + 2*ymchannel->ymidx;
-    *pPsgSndData = divisor & 0xff;
-    *pPsgSndCtrl = 1 + 2*ymchannel->ymidx;
-    *pPsgSndData = divisor >> 8;
-    // Amplitude
-    *pPsgSndCtrl = 8 + ymchannel->ymidx;
-    unsigned char new_volume = (ymchannel->volume >> 3) + snd_MusicVolume;
-    if (new_volume > 15) {
-      new_volume -= 15;
-    } else {
-      new_volume = 0;
-    }
-    if (*pPsgSndCtrl != new_volume) {
-      *pPsgSndData = new_volume;
-    }
-    
-    // Apply volume decay
-    if (ymchannel->volume <= 2) {
-      ymchannel->volume = 0;
-    } else {
-      // TODO: Better envelope function
-      ymchannel->volume -= 2;
-    }
-
-    if (ymchannel->ticks_remaining == 1) {
-      // Reaching end? Disable mixer for channel.
-      *pPsgSndCtrl = 7;
-      *pPsgSndData = *pPsgSndCtrl | (1 << ymchannel->ymidx);
-      ymchannel->ticks_remaining = 0;
-    } else if (ymchannel->ticks_remaining != 32767) {
-      ymchannel->ticks_remaining--;
-    }
-  }
-
-  // Waiting? Decrement and do nothing.
-  if (ymmusic_wait > 0) {
-    ymmusic_wait--;
-    return;
-  }
-
-  // Parse the next event or delay (depending on state) as long as we don't actually have to wait.
-  do {
-    // Save cursor so that we can calculate the time spent reading these bytes.
-    unsigned char *ymmusic_ptr_orig = ymmusic_ptr;
-    if (ymmusic_state & YMMUSIC_READ_DELAY) {
-      // Read a delay in 1/140th of a second
-      short delay = 0;
-      do {
-          delay = (delay << 7) + (0x7f & *ymmusic_ptr);
-      } while (0x80 & *ymmusic_ptr++);
-      // Convert delay into 1/512th of 1/55s.
-      ymmusic_wait_remainder += 201*delay;
-      // Read regular event next
-      ymmusic_state &= ~YMMUSIC_READ_DELAY;
-    } else {
-      // Parse a regular event
-      if (0x80 & *ymmusic_ptr) {
-        // Is last regular event? Read delay next.
-        ymmusic_state |= YMMUSIC_READ_DELAY;
-      }
-      unsigned char event = (0x70 & *ymmusic_ptr) >> 4;
-      unsigned char channel = *ymmusic_ptr & 0xf;
-      switch(event) {
-      case 0: // Release note
-        ymmusic_release_note(channel, ymmusic_ptr[1] & 0x7f);
-        ymmusic_ptr += 2;
-        break;
-      case 1: // Play note
-        ymmusic_play_note(channel, ymmusic_ptr[1] & 0x7f, ymmusic_ptr[1] & 0x80, ymmusic_ptr[2]);
-        ymmusic_ptr += (ymmusic_ptr[1] & 0x80) ? 3 : 2;
-        break;
-      case 2: // Pitch bend
-        ymmusic_pitch_bend(channel, ymmusic_ptr[1]);
-        ymmusic_ptr += 2;
-        break;
-      case 3: // System event
-        fprintf(stderr, "\rSystem event %d %d", channel, ymmusic_ptr[1]);
-        ymmusic_ptr += 2;
-        break;
-      case 4: // Controller
-        //fprintf(stderr, "\rC %d %d %d ", channel, ymmusic_ptr[1], ymmusic_ptr[2]);
-        ymmusic_controller(channel, ymmusic_ptr[1], ymmusic_ptr[2]);
-        ymmusic_ptr += 3;
-        break;
-      case 5: // End of measure
-        ymmusic_ptr += 1;
-        break;
-      case 6: // Finish
-        if (!(ymmusic_state & YMMUSIC_LOOP)) {
-          ymmusic_state &= ~YMMUSIC_PLAY;
-        }
-        ymmusic_ptr = NULL;
-        break;
-      case 7: // Unused
-        ymmusic_ptr += 2;
-        break;
-      }
-    }
-    // Add delay penalty for number of bytes read. MIDI transfers 3125 bytes/s, that's 9/512 of 1/55s per byte.
-    ymmusic_wait_remainder += YMMUSIC_PER_BYTE_PENALTY * (ymmusic_ptr - ymmusic_ptr_orig);
-
-    // Repeat until we have to wait at least one tick.
-  } while (ymmusic_wait_remainder < 512 && ymmusic_ptr);
-
-  ymmusic_wait = ymmusic_wait_remainder / 512;
-  ymmusic_wait_remainder %= 512;
-}
 
 // Interrupt handler.
 void I_HandleSoundTimer( int ignore )
@@ -1287,13 +961,19 @@ static volatile void (**pVblVec)() = (void *)0x70;
 static void (*pOldVblVec)() = 0;
 
 __attribute__((interrupt)) void vbl_interrupt() {
+ 	//volatile unsigned short *reg = (unsigned short*) 0xff8240;
+  //unsigned short old = *reg;
+  //*reg = 0x000f;
   ymmusic_update();
+  //*reg = 0x0f00;
   if (!flag) {
     I_UpdateSound();
   }
+  //*reg = 0x00f0;
   if (I_ShouldSubmitSound()) {
     I_HandleSoundTimer(0);
   }
+  //*reg = old;
 }
 
 // Get the interrupt. Set duration in millisecs.
