@@ -83,9 +83,9 @@ byte		translations[3][256];
 // Source is the top of the column to scale.
 //
 lighttable_t*		dc_colormap; 
-int			dc_x; 
-int			dc_yl; 
-int			dc_yh; 
+short			dc_x; 
+short			dc_yl; 
+short			dc_yh; 
 fixed_t			dc_iscale; 
 fixed_t			dc_texturemid;
 
@@ -104,7 +104,7 @@ int			dccount;
 // 
 void R_DrawColumn (void) 
 { 
-    int			count; 
+    short		count; 
     byte*		dest; 
     fixed_t		frac;
     fixed_t		fracstep;	 
@@ -135,11 +135,13 @@ void R_DrawColumn (void)
     // Inner loop that does the actual texture mapping,
     //  e.g. a DDA-lile scaling.
     // This is as fast as it gets.
+    byte *source = dc_source;
+    lighttable_t *colormap = dc_colormap;
     do 
     {
 	// Re-map color indices from wall texture column
 	//  using a lighting/special effects LUT.
-	*dest = dc_colormap[dc_source[(frac>>FRACBITS)&127]];
+	*dest = colormap[source[(frac>>FRACBITS)&127]];
 	
 	dest += SCREENWIDTH; 
 	frac += fracstep;
@@ -210,7 +212,7 @@ void R_DrawColumn (void)
 
 void R_DrawColumnLow (void) 
 { 
-    int			count; 
+    short		count; 
     byte*		dest; 
     byte*		dest2;
     fixed_t		frac;
@@ -260,7 +262,7 @@ void R_DrawColumnLow (void)
 #define FUZZOFF	(SCREENWIDTH)
 
 
-int	fuzzoffset[FUZZTABLE] =
+short	fuzzoffset[FUZZTABLE] =
 {
     FUZZOFF,-FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
     FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
@@ -284,7 +286,7 @@ int	fuzzpos = 0;
 //
 void R_DrawFuzzColumn (void) 
 { 
-    int			count; 
+    short		count; 
     byte*		dest; 
     fixed_t		frac;
     fixed_t		fracstep;	 
@@ -384,7 +386,7 @@ byte*	translationtables;
 
 void R_DrawTranslatedColumn (void) 
 { 
-    int			count; 
+    short		count; 
     byte*		dest; 
     fixed_t		frac;
     fixed_t		fracstep;	 
@@ -458,7 +460,7 @@ void R_DrawTranslatedColumn (void)
 //
 void R_InitTranslationTables (void)
 {
-    int		i;
+    short		i;
 	
     translationtables = Z_Malloc (256*3+255, PU_STATIC, 0);
     translationtables = (byte *)(( (int)translationtables + 255 )& ~255);
@@ -497,9 +499,9 @@ void R_InitTranslationTables (void)
 // In consequence, flats are not stored by column (like walls),
 //  and the inner loop has to step in texture space u and v.
 //
-int			ds_y; 
-int			ds_x1; 
-int			ds_x2;
+short			ds_y; 
+short			ds_x1; 
+short			ds_x2;
 
 lighttable_t*		ds_colormap; 
 
@@ -514,16 +516,27 @@ byte*			ds_source;
 // just for profiling
 int			dscount;
 
+typedef unsigned int fixed_2in1_t;
+
+// Poor man's SIMD:
+// Pack xfrac and yfrac as 6.9 fixedpoint numbers into a single 32 bit integer:
+// XXXXXXxx xxxxxxx0 YYYYYYyy yyyyyy0
+static fixed_2in1_t pack(unsigned int a, unsigned int b)
+{
+    return ((a & 0x003fff80) << 10) | ((b & 0x003fff80) >> 6);
+}
+
+unsigned short rotl16 (unsigned short value, unsigned int count) {
+    return (value << count) | (value >> (16 - count));
+}
 
 //
 // Draws the actual span.
 void R_DrawSpan (void) 
 { 
-    fixed_t		xfrac;
-    fixed_t		yfrac; 
     byte*		dest; 
-    int			count;
-    int			spot; 
+    short		count;
+    short		spot; 
 	 
 #ifdef RANGECHECK 
     if (ds_x2 < ds_x1
@@ -537,27 +550,35 @@ void R_DrawSpan (void)
 //	dscount++; 
 #endif 
 
-    
-    xfrac = ds_xfrac; 
-    yfrac = ds_yfrac; 
-	 
     dest = ylookup[ds_y] + columnofs[ds_x1];
 
     // We do not check for zero spans here?
     count = ds_x2 - ds_x1; 
 
+    lighttable_t *colormap = ds_colormap;
+    byte *source = ds_source;
+    // Poor man's SIMD:
+    // Pack xfrac and yfrac as 6.9 fixedpoint numbers into a single 32 bit integer:
+    // XXXXXXxx xxxxxxx0 YYYYYYyy yyyyyy0
+    fixed_2in1_t mask = 0xfffefffe;
+    fixed_2in1_t frac = pack(ds_xfrac, ds_yfrac);
+    fixed_2in1_t step = pack(ds_xstep, ds_ystep);
     do 
     {
 	// Current texture index in u,v.
-	spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+	//spot = ((yfrac>>(16-6))&(63*64)) + ((xfrac>>16)&63);
+        fixed_2in1_t frac2 = frac & 0xfc00fc00;
+        spot = frac2 >> 16; // Implemented using swap
+        spot = rotl16(spot, 6); // Want 6 bits of x in low position
+        spot |= ((unsigned short)frac2) >> 4; // Add 6 bits of y in high position
 
 	// Lookup pixel from flat texture tile,
 	//  re-index using light/colormap.
-	*dest++ = ds_colormap[ds_source[spot]];
+	*dest++ = colormap[source[spot]];
 
 	// Next step in u,v.
-	xfrac += ds_xstep; 
-	yfrac += ds_ystep;
+        frac += step;
+        frac &= mask;
 	
     } while (count--); 
 } 
@@ -645,8 +666,8 @@ void R_DrawSpanLow (void)
     fixed_t		xfrac;
     fixed_t		yfrac; 
     byte*		dest; 
-    int			count;
-    int			spot; 
+    short		count;
+    short		spot; 
 	 
 #ifdef RANGECHECK 
     if (ds_x2 < ds_x1
@@ -694,10 +715,10 @@ void R_DrawSpanLow (void)
 //
 void
 R_InitBuffer
-( int		width,
-  int		height ) 
+( short		width,
+  short		height ) 
 { 
-    int		i; 
+    short		i; 
 
     // Handle resize,
     //  e.g. smaller view windows

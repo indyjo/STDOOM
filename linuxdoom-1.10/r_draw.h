@@ -30,9 +30,9 @@
 
 
 extern lighttable_t*	dc_colormap;
-extern int		dc_x;
-extern int		dc_yl;
-extern int		dc_yh;
+extern short		dc_x;
+extern short		dc_yl;
+extern short		dc_yh;
 extern fixed_t		dc_iscale;
 extern fixed_t		dc_texturemid;
 
@@ -61,9 +61,9 @@ R_VideoErase
 ( unsigned	ofs,
   int		count );
 
-extern int		ds_y;
-extern int		ds_x1;
-extern int		ds_x2;
+extern short		ds_y;
+extern short		ds_x1;
+extern short		ds_x2;
 
 extern lighttable_t*	ds_colormap;
 
@@ -89,8 +89,8 @@ void 	R_DrawSpanLow (void);
 
 void
 R_InitBuffer
-( int		width,
-  int		height );
+( short		width,
+  short		height );
 
 
 // Initialize color translation tables,

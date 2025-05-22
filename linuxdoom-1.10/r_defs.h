@@ -322,8 +322,8 @@ typedef byte	lighttable_t;
 typedef struct drawseg_s
 {
     seg_t*		curline;
-    int			x1;
-    int			x2;
+    short			x1;
+    short			x2;
 
     fixed_t		scale1;
     fixed_t		scale2;
@@ -378,8 +378,8 @@ typedef struct vissprite_s
     struct vissprite_s*	prev;
     struct vissprite_s*	next;
     
-    int			x1;
-    int			x2;
+    short	x1;
+    short	x2;
 
     // for line side calculation
     fixed_t		gx;

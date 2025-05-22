@@ -844,9 +844,9 @@ void R_DrawSprite (vissprite_t* spr)
     drawseg_t*		ds;
     short		clipbot[SCREENWIDTH];
     short		cliptop[SCREENWIDTH];
-    int			x;
-    int			r1;
-    int			r2;
+    short		x;
+    short		r1;
+    short		r2;
     fixed_t		scale;
     fixed_t		lowscale;
     int			silhouette;

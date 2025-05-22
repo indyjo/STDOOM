@@ -102,8 +102,8 @@ short*		maskedtexturecol;
 void
 R_RenderMaskedSegRange
 ( drawseg_t*	ds,
-  int		x1,
-  int		x2 )
+  short		x1,
+  short		x2 )
 {
     unsigned	index;
     column_t*	col;

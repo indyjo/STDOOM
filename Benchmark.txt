@@ -10,6 +10,7 @@ History of versions under Benchmark
 - V4 Zero CPU for sound mixing in silence
 - V5 Support for -nosound
 - V6 Optimised 4x zoom mode (memcpy 2 lines)
+- V7 Optimize R_DrawColumn and R_DrawSpan
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V0 112087 -> 0.666 fps
@@ -19,6 +20,7 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
   V0 112292 -> 0.665 fps
   V1  90371 -> 0.826 fps
   V5  87109 -> 0.857 fps
+  V7  80059 -> 0.933 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  85036 -> 0.878 fps
@@ -26,11 +28,13 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V4  53979 -> 1.384 fps
   V5  51641 -> 1.446 fps
   V6  48333 -> 1.545 fps
+  V7  46389 -> 1.610 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V0  55181 -> 1.354 fps
   V1  44434 -> 1.681 fps
   V5  42991 -> 1.737 fps
+  V7  39519 -> 1.890 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  41867 -> 1.784 fps
@@ -38,11 +42,13 @@ Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V2  26946 -> 2.772 fps
   V5  25489 -> 2.930 fps
   V6  23858 -> 3.131 fps
+  V7  22898 -> 3.262 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  29912 -> 2.497 fps
   V1  23908 -> 3.124 fps
   V5  23103 -> 3.233 fps
+  V7  21674 -> 3.446 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V0  22787 -> 3.278 fps
@@ -50,6 +56,7 @@ Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V2  15362 -> 4.861 fps
   V5  14600 -> 5.116 fps
   V6  14302 -> 5.222 fps
+  V7  14017 -> 5.329 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  17768 -> 4.204 fps
