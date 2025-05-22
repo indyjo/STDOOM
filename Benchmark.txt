@@ -1,4 +1,6 @@
-STDOOM started with -timedemo demo3
+STDOOM started with:
+- V0..V4: -timedemo demo3
+- V5..V?: -timedemo demo3 -nosound
 
 History of versions under Benchmark
 - V0 Baseline version (2025-05-14)
@@ -6,6 +8,7 @@ History of versions under Benchmark
 - V2 4x zoom
 - V3 Rollback of Doom8088 changes for 020 CPUs and onward
 - V4 Zero CPU for sound mixing in silence
+- V5 Support for -nosound
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V0 112087 -> 0.666 fps
@@ -14,29 +17,35 @@ Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
   V0 112292 -> 0.665 fps
   V1  90371 -> 0.826 fps
+  V5  87109 -> 0.857 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  85036 -> 0.878 fps
   V2  54567 -> 1.369 fps
   V4  53979 -> 1.384 fps
+  V5  51641 -> 1.446 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V0  55181 -> 1.354 fps
   V1  44434 -> 1.681 fps
+  V5  42991 -> 1.737 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  41867 -> 1.784 fps
   V1  31812 -> 2.348 fps
   V2  26946 -> 2.772 fps
+  V5  25489 -> 2.930 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  29912 -> 2.497 fps
   V1  23908 -> 3.124 fps
+  V5  23103 -> 3.233 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V0  22787 -> 3.278 fps
   V1  17381 -> 4.297 fps
   V2  15362 -> 4.861 fps
+  V5  14600 -> 5.116 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  17768 -> 4.204 fps

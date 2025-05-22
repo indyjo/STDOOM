@@ -394,6 +394,9 @@ S_StartSoundAtVolume
 				       priority);
 }	
 
+// Pull in from command line options
+extern boolean nosfx;
+
 void
 S_StartSound
 ( void*		origin,
@@ -404,7 +407,7 @@ S_StartSound
     // sfx_id = sfx_itemup;
 #endif
   
-    S_StartSoundAtVolume(origin, sfx_id, snd_SfxVolume);
+    if (!nosfx) S_StartSoundAtVolume(origin, sfx_id, snd_SfxVolume);
 
 
     // UNUSED. We had problems, had we not?

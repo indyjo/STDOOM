@@ -96,6 +96,8 @@ boolean		devparm;	// started game with -devparm
 boolean         nomonsters;	// checkparm of -nomonsters
 boolean         respawnparm;	// checkparm of -respawn
 boolean         fastparm;	// checkparm of -fast
+boolean         nomusic;        // checkparm of -nomusic
+boolean         nosfx;          // checkparm of -nosfx
 
 boolean         drone;
 
@@ -822,6 +824,11 @@ void D_DoomMain (void)
 	deathmatch = 2;
     else if (M_CheckParm ("-deathmatch"))
 	deathmatch = 1;
+    nosfx = M_CheckParm ("-nosfx");
+    nomusic = M_CheckParm ("-nomusic");
+    if (M_CheckParm ("-nosound")) {
+	nosfx = nomusic = true;
+    }
 
     switch ( gamemode )
     {

@@ -79,6 +79,8 @@ void I_SoundDelTimer( void );
 // None?
 #endif
 
+// Pull in command line options
+extern boolean nomusic, nosfx;
 
 // A quick hack to establish a protocol between
 // synchronous mix buffer updates and asynchronous
@@ -784,7 +786,7 @@ void I_ShutdownSound(void)
     done=1;
   }
 #ifdef SNDINTR
-  I_SoundDelTimer();
+  if (!nosfx || !nomusic) I_SoundDelTimer();
 #endif
   
   *pDmaSndCtrl = DMASND_CTRL_OFF;
@@ -825,10 +827,18 @@ I_InitSound()
   int i;
   
 #ifdef SNDINTR
-  fprintf( stderr, "I_SoundSetTimer: %d microsecs\n", SOUND_INTERVAL );
-  I_SoundSetTimer( SOUND_INTERVAL );
+  if (nosfx && nomusic) {
+    fprintf( stderr, "I_InitSound: skipping VBLANK interrupt\n" );
+  } else {
+    fprintf( stderr, "I_InitSound: installing VBLANK interrupt\n" );
+    I_SoundSetTimer( SOUND_INTERVAL );
+  }
 #endif
-    
+  
+  if (nosfx) {
+    fprintf( stderr, "I_InitSound: nosfx\n");
+    return;
+  }
   // Secure and configure sound device first.
   fprintf( stderr, "I_InitSound: ");
   *pDmaSndMode = DMASND_MODE_STEREO | DMASND_MODE_HZ_12517;
@@ -869,9 +879,13 @@ I_InitSound()
 }
 
 void I_InitMusic(void)		{
-  fprintf(stderr, "I_InitMusic: [        ]\033D\033D\033D\033D\033D\033D\033D\033D\033D");
-  ymmusic_init();
-  fprintf(stderr, "] done.\n");
+  if (nomusic) {
+    fprintf(stderr, "I_InitMusic: nomusic\n");
+  } else {
+    fprintf(stderr, "I_InitMusic: [        ]\033D\033D\033D\033D\033D\033D\033D\033D\033D");
+    ymmusic_init();
+    fprintf(stderr, "] done.\n");
+  }
 }
 void I_ShutdownMusic(void)	{ }
 
@@ -964,14 +978,16 @@ __attribute__((interrupt)) void vbl_interrupt() {
  	//volatile unsigned short *reg = (unsigned short*) 0xff8240;
   //unsigned short old = *reg;
   //*reg = 0x000f;
-  ymmusic_update();
+  if (!nomusic) ymmusic_update();
   //*reg = 0x0f00;
-  if (!flag) {
-    I_UpdateSound();
-  }
-  //*reg = 0x00f0;
-  if (I_ShouldSubmitSound()) {
-    I_HandleSoundTimer(0);
+  if (!nosfx) {
+    if (!flag) {
+      I_UpdateSound();
+    }
+    //*reg = 0x00f0;
+    if (I_ShouldSubmitSound()) {
+      I_HandleSoundTimer(0);
+    }
   }
   //*reg = old;
 }
