@@ -9,6 +9,7 @@ History of versions under Benchmark
 - V3 Rollback of Doom8088 changes for 020 CPUs and onward
 - V4 Zero CPU for sound mixing in silence
 - V5 Support for -nosound
+- V6 Optimised 4x zoom mode (memcpy 2 lines)
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V0 112087 -> 0.666 fps
@@ -24,6 +25,7 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V2  54567 -> 1.369 fps
   V4  53979 -> 1.384 fps
   V5  51641 -> 1.446 fps
+  V6  48333 -> 1.545 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V0  55181 -> 1.354 fps
@@ -35,6 +37,7 @@ Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V1  31812 -> 2.348 fps
   V2  26946 -> 2.772 fps
   V5  25489 -> 2.930 fps
+  V6  23858 -> 3.131 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  29912 -> 2.497 fps
@@ -46,6 +49,7 @@ Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V1  17381 -> 4.297 fps
   V2  15362 -> 4.861 fps
   V5  14600 -> 5.116 fps
+  V6  14302 -> 5.222 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  17768 -> 4.204 fps

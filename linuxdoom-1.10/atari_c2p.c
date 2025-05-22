@@ -768,19 +768,24 @@ void c2p_screen(unsigned char *out, const unsigned char *in) {
 	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
     }
 #else
-    int splitline = 0;
+    short splitline = 0;
     boolean zoom_allowed = gamestate == GS_LEVEL
         && !menuactive && !inhelpscreens && !automapactive;
     if (zoom_allowed && viewwidth <= SCREENWIDTH/2) {
         splitline = 200-32;
         if (viewwidth <= SCREENWIDTH/4) {
             // 4x zoom
-            for (int line = 0; line < splitline; line++ ) {
-                c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[line&3]);
+            for (short line = 0; line < splitline; line++ ) {
+                short phase = line & 3;
+                if (phase < 2) {
+                    c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
+                } else if (phase == 2) {
+                    memcpy(out + 160*line, out + 160*line - 320, 320);
+                }
             }
         } else {
             // 2x zoom
-            for (int line = 0; line < splitline; line++ ) {
+            for (short line = 0; line < splitline; line++ ) {
                 c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
             }
         }
