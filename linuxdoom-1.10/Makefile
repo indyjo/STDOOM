@@ -7,8 +7,9 @@
 #CC=  gcc  # gcc or g++
 
 CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ # -DUSEASM 
+CFLAGS20=$(CFLAGS) -m68020
 LDFLAGS=-L/usr/X11R6/lib
-LIBS=-lm
+LDLIBS=-lm
 
 # subdirectory for objects
 O=atari
@@ -77,23 +78,32 @@ OBJS=				\
 		$(O)/s_sound.o		\
 		$(O)/z_zone.o			\
 		$(O)/info.o				\
-		$(O)/sounds.o
+		$(O)/sounds.o		\
+		$(O)/i_main.o
+OBJS20=$(OBJS:%.o=%.20.o)
 
-all:	 $(O)/stdoom.tos
+all:	 $(O)/stdoom.tos $(O)/stdoom20.tos
 
 clean:
-	rm -f $(O)/stdoom.tos $(O)/*.o
+	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/*.o
 
-$(O)/stdoom.tos:	$(OBJS) $(O)/i_main.o
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
-	-o $(O)/stdoom.tos $(LIBS)
+$(O)/stdoom.tos:	$(OBJS)
+	$(CC) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
+
+$(O)/stdoom20.tos:	$(OBJS20)
+	$(CC) $(LDFLAGS) $(OBJS20) -o $@ $(LDLIBS)
+
+$(O)/%.20.o:	%.c
+	$(CC) $(CPPFLAGS) -m68020 $(CFLAGS20) -c $< -o $@
 
 $(O)/%.o:	%.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 # Rule for compiling to assembly on demand
+$(O)/%.20.s: %.c
+	$(CC) $(CPPFLAGS) -m68020 $(CFLAGS20) -c $< -S -fverbose-asm -o $@
 $(O)/%.s: %.c
-	$(CC) $(CFLAGS) -c $< -S -fverbose-asm -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -S -fverbose-asm -o $@
 
 #############################################################
 #
