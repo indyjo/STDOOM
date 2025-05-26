@@ -301,8 +301,8 @@ P_CheckSight
 ( mobj_t*	t1,
   mobj_t*	t2 )
 {
-    int		s1;
-    int		s2;
+    short	s1;
+    short       s2;
     int		pnum;
     int		bytenum;
     int		bitnum;

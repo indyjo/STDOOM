@@ -102,12 +102,6 @@ FixedDiv2
   fixed_t	b )
 {
 #ifdef __M68000__
-    if (a < 0)
-    {
-        a = -a;
-        b = -b;
-    }
-
     uint16_t ibit = 1;
     while (b < a)
     {

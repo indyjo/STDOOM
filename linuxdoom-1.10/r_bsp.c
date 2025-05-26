@@ -79,8 +79,8 @@ void R_ClearDrawSegs (void)
 //
 typedef	struct
 {
-    int	first;
-    int last;
+    short first;
+    short last;
     
 } cliprange_t;
 
@@ -244,11 +244,31 @@ R_ClipPassWallSegment
 //
 void R_ClearClipSegs (void)
 {
-    solidsegs[0].first = -0x7fffffff;
+    solidsegs[0].first = -0x7fff;
     solidsegs[0].last = -1;
     solidsegs[1].first = viewwidth;
-    solidsegs[1].last = 0x7fffffff;
+    solidsegs[1].last = 0x7fff;
     newend = solidsegs+2;
+}
+
+static short view_angle_to_x(angle_t angle) {
+#ifdef USEASM
+    asm (
+        "swap           %[angle]                        \n\t"
+        "lsr.w          #2,%[angle]                     \n\t"
+        "add.w          %[offset],%[angle]              \n\t"
+        "and.w          #0x3ffe,%[angle]                \n\t"
+        "move.w         (%[table],%[angle].w),%[angle]  \n\t"
+        : [angle] "+d" (angle)
+        : [table] "a" (viewangletox)
+        , [offset] "n" (ANG90>>18)
+        :
+    );
+    return (short) angle;
+#else
+    short shifted = (angle + ANG90) >> ANGLETOFINESHIFT;
+    return viewangletox[shifted];
+#endif
 }
 
 //
@@ -258,8 +278,8 @@ void R_ClearClipSegs (void)
 //
 void R_AddLine (seg_t*	line)
 {
-    int			x1;
-    int			x2;
+    short		x1;
+    short		x2;
     angle_t		angle1;
     angle_t		angle2;
     angle_t		span;
@@ -268,6 +288,28 @@ void R_AddLine (seg_t*	line)
     curline = line;
 
     // OPTIMIZE: quickly reject orthogonal back sides.
+    // Imagine the coordinate system like this:
+    //
+    // Y ^
+    //   |  ^---------->
+    //   |  |          |
+    //   |  |  INSIDE  |  OUTSIDE
+    //   |  |          |
+    //   |  <----------v
+    //   |
+    //   0------------->
+    //                 X
+    if (line->v1->x == line->v2->x) {
+        // Line is along y axis.
+        if ((viewx < line->v1->x) == (line->v2->y > line->v1->y)) {
+            return;
+        }
+    } else if (line->v1->y == line->v2->y) {
+        // Line is along x axis
+        if ((viewy > line->v1->y) == (line->v2->x > line->v1->x)) {
+            return;
+        }
+    }
     angle1 = R_PointToAngle (line->v1->x, line->v1->y);
     angle2 = R_PointToAngle (line->v2->x, line->v2->y);
     
@@ -308,10 +350,8 @@ void R_AddLine (seg_t*	line)
     
     // The seg is in the view range,
     // but not necessarily visible.
-    angle1 = (angle1+ANG90)>>ANGLETOFINESHIFT;
-    angle2 = (angle2+ANG90)>>ANGLETOFINESHIFT;
-    x1 = viewangletox[angle1];
-    x2 = viewangletox[angle2];
+    x1 = view_angle_to_x(angle1);
+    x2 = view_angle_to_x(angle2);
 
     // Does not cross a pixel?
     if (x1 == x2)
@@ -380,9 +420,9 @@ int	checkcoord[12][4] =
 
 boolean R_CheckBBox (fixed_t*	bspcoord)
 {
-    int			boxx;
-    int			boxy;
-    int			boxpos;
+    short		boxx;
+    short		boxy;
+    short		boxpos;
 
     fixed_t		x1;
     fixed_t		y1;
@@ -396,8 +436,8 @@ boolean R_CheckBBox (fixed_t*	bspcoord)
     
     cliprange_t*	start;
 
-    int			sx1;
-    int			sx2;
+    short		sx1;
+    short		sx2;
     
     // Find the corners of the box
     // that define the edges from current viewpoint.
@@ -462,10 +502,8 @@ boolean R_CheckBBox (fixed_t*	bspcoord)
     // Find the first clippost
     //  that touches the source post
     //  (adjacent pixels are touching).
-    angle1 = (angle1+ANG90)>>ANGLETOFINESHIFT;
-    angle2 = (angle2+ANG90)>>ANGLETOFINESHIFT;
-    sx1 = viewangletox[angle1];
-    sx2 = viewangletox[angle2];
+    sx1 = view_angle_to_x(angle1);
+    sx2 = view_angle_to_x(angle2);
 
     // Does not cross a pixel.
     if (sx1 == sx2)

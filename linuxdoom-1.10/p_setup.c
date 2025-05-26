@@ -59,7 +59,7 @@ vertex_t*	vertexes;
 int		numsegs;
 seg_t*		segs;
 
-int		numsectors;
+short		numsectors;
 sector_t*	sectors;
 
 int		numsubsectors;
@@ -235,7 +235,12 @@ void P_LoadSectors (int lump)
     mapsector_t*	ms;
     sector_t*		ss;
 	
-    numsectors = W_LumpLength (lump) / sizeof(mapsector_t);
+    int n = W_LumpLength (lump) / sizeof(mapsector_t);
+    if (n > MAXSHORT) {
+        I_Error ("P_LoadSectors: too many sectors: %d", n);
+    }
+    numsectors = n;
+
     sectors = Z_Malloc (numsectors*sizeof(sector_t),PU_LEVEL,0);	
     memset (sectors, 0, numsectors*sizeof(sector_t));
     data = W_CacheLumpNum (lump,PU_STATIC);
