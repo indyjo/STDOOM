@@ -106,8 +106,8 @@ void R_DrawColumn (void)
 { 
     short		count; 
     byte*		dest; 
-    fixed_t		frac;
-    fixed_t		fracstep;	 
+    unsigned short	frac;
+    unsigned short      fracstep;	 
  
     count = dc_yh - dc_yl; 
 
@@ -129,24 +129,50 @@ void R_DrawColumn (void)
 
     // Determine scaling,
     //  which is the only mapping to be done.
-    fracstep = dc_iscale; 
-    frac = dc_texturemid + (dc_yl-centery)*fracstep; 
+    // Reduce to 7.9 fixed-point short.
+    fracstep = (unsigned)(dc_iscale << (16-7)) >> 16; 
+    frac = (unsigned)((dc_texturemid + (dc_yl-centery)*dc_iscale) << (16-7)) >> 16; 
 
     // Inner loop that does the actual texture mapping,
     //  e.g. a DDA-lile scaling.
     // This is as fast as it gets.
     byte *source = dc_source;
     lighttable_t *colormap = dc_colormap;
+#ifdef USEASM
+    unsigned short tmp;
+    do {
+        asm (
+                "move.w %[frac],%[tmp]                  \n\t"
+                "lsr.w  %[shift],%[tmp]                 \n\t"
+                "move.b (%[source],%[tmp]),%[tmp]       \n\t"
+                "move.b (%[colormap],%[tmp]),%[tmp]     \n\t"
+                // outputs
+                : [tmp] "=d" (tmp)
+                // inputs
+                : [frac] "d" (frac)
+                , [source] "a" (source)
+                , [colormap] "a" (colormap)
+                , [shift] "d" (9)
+                // clobbers
+                : "memory"
+        );
+        *dest = tmp;
+	dest += SCREENWIDTH; 
+	frac += fracstep;
+	
+    } while (count--); 
+#else
     do 
     {
 	// Re-map color indices from wall texture column
 	//  using a lighting/special effects LUT.
-	*dest = colormap[source[(frac>>FRACBITS)&127]];
+	*dest = colormap[source[frac>>(16-7)]];
 	
 	dest += SCREENWIDTH; 
 	frac += fracstep;
 	
     } while (count--); 
+#endif
 } 
 
 
@@ -273,7 +299,7 @@ short	fuzzoffset[FUZZTABLE] =
     FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF 
 }; 
 
-int	fuzzpos = 0; 
+short	fuzzpos = 0; 
 
 
 //
@@ -288,8 +314,6 @@ void R_DrawFuzzColumn (void)
 { 
     short		count; 
     byte*		dest; 
-    fixed_t		frac;
-    fixed_t		fracstep;	 
 
     // Adjust borders. Low... 
     if (!dc_yl) 
@@ -314,59 +338,49 @@ void R_DrawFuzzColumn (void)
 		 dc_yl, dc_yh, dc_x);
     }
 #endif
-
-
-    // Keep till detailshift bug in blocky mode fixed,
-    //  or blocky mode removed.
-    /* WATCOM code 
-    if (detailshift)
-    {
-	if (dc_x & 1)
-	{
-	    outpw (GC_INDEX,GC_READMAP+(2<<8) ); 
-	    outp (SC_INDEX+1,12); 
-	}
-	else
-	{
-	    outpw (GC_INDEX,GC_READMAP); 
-	    outp (SC_INDEX+1,3); 
-	}
-	dest = destview + dc_yl*80 + (dc_x>>1); 
-    }
-    else
-    {
-	outpw (GC_INDEX,GC_READMAP+((dc_x&3)<<8) ); 
-	outp (SC_INDEX+1,1<<(dc_x&3)); 
-	dest = destview + dc_yl*80 + (dc_x>>2); 
-    }*/
-
     
     // Does not work with blocky mode.
     dest = ylookup[dc_yl] + columnofs[dc_x];
+    short fuzzpos_tmp = fuzzpos; // Copy global into register for performance
+    // Use colormap #6 so the color gets a little darker.
+    byte *colormap = colormaps + 6*256;
 
-    // Looks familiar.
-    fracstep = dc_iscale; 
-    frac = dc_texturemid + (dc_yl-centery)*fracstep; 
+#ifdef USEASM
+    // The high-byte is never overwritten.
+    unsigned short tmp = 0;
+#endif
 
-    // Looks like an attempt at dithering,
-    //  using the colormap #6 (of 0-31, a bit
-    //  brighter than average).
-    do 
-    {
+    do {
+#ifdef USEASM
+        asm (
+                "move.b (%[dest],%[ofs].w),%[tmp]               \n\t"
+                "move.b (%[colormap],%[tmp].w),%[tmp]           \n\t"
+                // outputs
+                : [tmp] "+d" (tmp)
+                // inputs
+                : [colormap] "a" (colormap)
+                , [ofs] "d" (fuzzoffset[fuzzpos_tmp])
+                , [dest] "a" (dest)
+                // clobbers
+                : "memory"
+        );
+        *dest = tmp;
+#else
 	// Lookup framebuffer, and retrieve
 	//  a pixel that is either one column
 	//  left or right of the current one.
 	// Add index from colormap to index.
-	*dest = colormaps[6*256+dest[fuzzoffset[fuzzpos]]]; 
+	*dest = colormap[dest[fuzzoffset[fuzzpos_tmp]]]; 
+#endif
 
 	// Clamp table lookup index.
-	if (++fuzzpos == FUZZTABLE) 
-	    fuzzpos = 0;
-	
-	dest += SCREENWIDTH;
+	if (++fuzzpos_tmp == FUZZTABLE) 
+	    fuzzpos_tmp = 0;
 
-	frac += fracstep; 
-    } while (count--); 
+	dest += SCREENWIDTH; 
+    } while (count--);
+
+    fuzzpos = fuzzpos_tmp; // Copy register back into global
 } 
  
   
