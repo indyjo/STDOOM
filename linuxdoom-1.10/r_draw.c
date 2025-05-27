@@ -95,6 +95,11 @@ byte*			dc_source;
 // just for profiling 
 int			dccount;
 
+static short reduce(fixed_t n)
+{
+    return (n << (16-7)) >> 16;
+}
+
 //
 // A column is a vertical slice/span from a wall texture that,
 //  given the DOOM style restrictions on the view orientation,
@@ -130,8 +135,8 @@ void R_DrawColumn (void)
     // Determine scaling,
     //  which is the only mapping to be done.
     // Reduce to 7.9 fixed-point short.
-    fracstep = (unsigned)(dc_iscale << (16-7)) >> 16; 
-    frac = (unsigned)((dc_texturemid + (dc_yl-centery)*dc_iscale) << (16-7)) >> 16; 
+    fracstep = reduce(dc_iscale); 
+    frac = reduce(dc_texturemid) + (int)(dc_yl-centery) * fracstep;
 
     // Inner loop that does the actual texture mapping,
     //  e.g. a DDA-lile scaling.

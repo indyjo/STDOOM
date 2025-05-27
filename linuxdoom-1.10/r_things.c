@@ -483,8 +483,8 @@ void R_ProjectSprite (mobj_t* thing)
     tr_x = thing->x - viewx;
     tr_y = thing->y - viewy;
 	
-    gxt = FixedMul(tr_x,viewcos); 
-    gyt = -FixedMul(tr_y,viewsin);
+    gxt = FixedScale(tr_x, viewcos); 
+    gyt = FixedScale(tr_y, -viewsin);
     
     tz = gxt-gyt; 
 
@@ -494,8 +494,8 @@ void R_ProjectSprite (mobj_t* thing)
     
     xscale = FixedDiv(projection, tz);
 	
-    gxt = -FixedMul(tr_x,viewsin); 
-    gyt = FixedMul(tr_y,viewcos); 
+    gxt = FixedScale(tr_x, -viewsin); 
+    gyt = FixedScale(tr_y, viewcos); 
     tx = -(gyt+gxt); 
 
     // too far off the side?

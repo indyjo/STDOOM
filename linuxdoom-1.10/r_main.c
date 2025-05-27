@@ -78,8 +78,8 @@ fixed_t			viewz;
 
 angle_t			viewangle;
 
-fixed_t			viewcos;
-fixed_t			viewsin;
+short			viewcos;
+short			viewsin;
 
 player_t*		viewplayer;
 
@@ -844,8 +844,8 @@ void R_SetupFrame (player_t* player)
 
     viewz = player->viewz;
     
-    viewsin = finesine[viewangle>>ANGLETOFINESHIFT];
-    viewcos = finecosine[viewangle>>ANGLETOFINESHIFT];
+    viewsin = finesine[viewangle>>ANGLETOFINESHIFT] >> 1;
+    viewcos = finecosine[viewangle>>ANGLETOFINESHIFT] >> 1;
 	
     sscount = 0;
 	

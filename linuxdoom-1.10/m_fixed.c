@@ -71,6 +71,25 @@ FixedMul
 #endif
 }
 
+fixed_t
+FixedScale
+( fixed_t	a,
+  short	b )
+{
+#ifdef __M68000__
+    uint16_t alw = a;
+    int16_t ahw = a >> FRACBITS;
+    uint16_t blw = b < 0 ? -2*b : 2*b;
+
+    uint32_t ll = (uint32_t) alw * blw;
+    int32_t hl = ( int32_t) ahw * blw;
+    fixed_t result = (ll >> FRACBITS) + hl;
+    if (b < 0) result = -result;
+    return result;
+#else
+    return FixedMul(a,b << 1);
+#endif
+}
 
 
 //
