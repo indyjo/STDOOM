@@ -4,10 +4,29 @@
 #include "doomstat.h"
 #include "atari_ym.h"
 
+typedef struct
+{
+    // Points to an array of data points.
+    char *data;
+    // Indexes into array which mark certain points in time.
+    unsigned char sustain_begin, release_begin, last;
+} envelope_t;
+
+typedef struct
+{
+    const char *name;
+    envelope_t *volume_envelope;
+    envelope_t *pitch_envelope;
+    envelope_t *note_envelope;
+    unsigned char override_note;
+    unsigned char overrides_note : 1;
+    unsigned char enables_noise : 1;
+} instrument_t;
+
 // Contains all data needed to drive a single YM-2149 hardware channel
 typedef struct
 {
-    // Number of ticks this note is playing.
+    // Number of ticks since note was pressed or released (0xffff means off).
     unsigned short ticks;
     // MUS Channel
     unsigned char channel;
@@ -15,16 +34,96 @@ typedef struct
     unsigned char note;
     // Index of YM channel
     unsigned char ymidx;
+    // Whether the note has been released
+    unsigned char released;
+    // Instrument playing
+    instrument_t *instrument;
 } ymmusic_voice_t;
 
 typedef struct
 {
+    // MUS instrument index assigned to channel
     unsigned char instrument;
     // MUS Volume 0..127
     unsigned char volume;
     // MUS Pitch bend (0..255)
     unsigned char pitch_bend;
 } ymmusic_channel_t;
+
+#define ENVELOPE(dataname, sustain, release) {          \
+    .data = dataname,                                   \
+    .sustain_begin = sustain,                           \
+    .release_begin = release,                           \
+    .last = sizeof(dataname)-1}
+
+static char overdriven_guitar_volume_envelope_data[] =
+    {-70, -40, -10, 0, -1, -1, -2, -2, -3, -3, -4, -4, -5, -5, -6, -6, -7, -7, -8, -8, -9, -9, -10, -10};
+static envelope_t overdriven_guitar_volume_envelope = ENVELOPE(overdriven_guitar_volume_envelope_data, 3, 5);
+static instrument_t overdriven_guitar = {
+    .name = "Overdriven Guitar",
+    .volume_envelope = &overdriven_guitar_volume_envelope,
+};
+
+static char distortion_guitar_volume_envelope_data[] =
+    {-20, 60, 10, 0, 8, -1, -1, -2, -3, -3, -4, -4, -5, -5, -6, -6, -7, -7, -8, -8, -9, -9, -10, -10};
+static char distortion_guitar_pitch_envelope_data[] =
+    {80, 40, 20, 0, 20, 0};
+static envelope_t distortion_guitar_volume_envelope = ENVELOPE(distortion_guitar_volume_envelope_data, 3, 5);
+static envelope_t distortion_guitar_pitch_envelope = ENVELOPE(distortion_guitar_pitch_envelope_data, 3, 5);
+static instrument_t distortion_guitar = {
+    .name = "Distortion Guitar",
+    .volume_envelope = &distortion_guitar_volume_envelope,
+    .pitch_envelope = &distortion_guitar_pitch_envelope,
+};
+
+static char dummy_instrument_volume_envelope_data[] =
+    {-20, 0, -16, -32, -64};
+static envelope_t dummy_instrument_volume_envelope = ENVELOPE(dummy_instrument_volume_envelope_data, 1, 2);
+static instrument_t dummy_instrument = {
+    .name = "Dummy Instrument",
+    .volume_envelope = &dummy_instrument_volume_envelope,
+};
+
+static char bass_drum_volume_envelope_data[] =
+    {0, 0, 0, 0, 0, -60, -80, -100, -120};
+static char bass_drum_note_envelope_data[] =
+    {0, -4, -8, -18, -26, -32, -35, -35, -36};
+static envelope_t bass_drum_volume_envelope = ENVELOPE(bass_drum_volume_envelope_data, 16, 16);
+static envelope_t bass_drum_note_envelope = ENVELOPE(bass_drum_note_envelope_data, 16, 16);
+static instrument_t bass_drum = {
+    .name = "Bass Drum",
+    .volume_envelope = &bass_drum_volume_envelope,
+    .note_envelope = &bass_drum_note_envelope,
+    .override_note = 64,
+    .overrides_note = 1,
+};
+
+static char snare_volume_envelope_data[] =
+    {120, 20, 10, 4, 0, -4, -8, -12, -16, -20, -24, -28, -32, -34, -36, -38, -40, -41, -42, -43, -44, -45, -46, -47,
+     -48, -49, -50, -51, -52, -53, -54, -55, -56, -57, -58, -59, -60, -61, -62, -63};
+static envelope_t snare_volume_envelope = ENVELOPE(snare_volume_envelope_data, 127, 127);
+static char electric_snare_note_envelope_data[] =
+    {+48, +0, -16, -10, -30, -28, -37, -33, -36};
+static envelope_t electric_snare_note_envelope = ENVELOPE(electric_snare_note_envelope_data, 127, 127);
+static instrument_t electric_snare = {
+    .name = "Electric Snare",
+    .volume_envelope = &snare_volume_envelope,
+    .note_envelope = &electric_snare_note_envelope,
+    .override_note = 81,
+    .overrides_note = 1,
+    .enables_noise = 1,
+};
+
+static char dummy_percussion_volume_envelope_data[] =
+    {40, -60, -98, -120};
+static envelope_t dummy_percussion_volume_envelope = ENVELOPE(dummy_percussion_volume_envelope_data, 127, 127);
+static instrument_t dummy_percussion = {
+    .name = "Dummy Percussion",
+    .volume_envelope = &dummy_percussion_volume_envelope,
+    .override_note = 50,
+    .overrides_note = 1,
+    .enables_noise = 1,
+};
 
 #define YMMUSIC_READ_DELAY 16
 
@@ -96,12 +195,14 @@ void ymmusic_init()
         }
         for (short bend = 0; bend < 16; bend++)
         {
-            ymmusic_divisors[note][bend] = (short)ceil(a * pow(2.0, b * (16 * (69 - note) + bend)));
+            short divisor = ceil(a * pow(2.0, b * (16 * (69 - note) + bend)));
+            if (divisor > 4095) divisor = 4095;
+            ymmusic_divisors[note][bend] = divisor;
         }
     }
 }
 
-#define FIXED_CHANNELS 2
+#define FIXED_CHANNELS 0
 static void ymmusic_play_note(unsigned char channel, unsigned char note, unsigned char use_volume, unsigned char volume)
 {
     if (volume > 127)
@@ -128,6 +229,15 @@ static void ymmusic_play_note(unsigned char channel, unsigned char note, unsigne
     for (int i = FIXED_CHANNELS; i < YMMUSIC_NUMVOICES; i++)
     {
         if (ymmusic_voices[i].ticks == 0xffff)
+        {
+            voice = ymmusic_voices + i;
+            goto found;
+        }
+    }
+    // If that fails, try to replace a released note
+    for (int i = FIXED_CHANNELS; i < YMMUSIC_NUMVOICES; i++)
+    {
+        if (ymmusic_voices[i].released)
         {
             voice = ymmusic_voices + i;
             goto found;
@@ -160,13 +270,27 @@ found:
     voice->channel = channel;
     voice->note = note;
     voice->ticks = 0;
+    voice->released = false;
 
-    // Mixer: enable
-    *pPsgSndCtrl = 7;
     if (channel == 15) {
-        *pPsgSndData = *pPsgSndCtrl & ~(1 << (voice->ymidx + 3));
+        // Percussion channel
+        if (note == 36) {
+            voice->instrument = &bass_drum;
+        } else if (note == 40) {
+            voice->instrument = &electric_snare;
+        } else {
+            voice->instrument = &dummy_percussion;
+        }
+    } else if (ymmusic_channels[channel].instrument == 29) {
+        voice->instrument = &overdriven_guitar;
+    } else if (ymmusic_channels[channel].instrument == 30) {
+        voice->instrument = &distortion_guitar;
     } else {
-        *pPsgSndData = *pPsgSndCtrl & ~(1 << voice->ymidx);
+        voice->instrument = &dummy_instrument;
+    }
+    
+    if (voice->instrument && voice->instrument->overrides_note) {
+        voice->note = voice->instrument->override_note;
     }
 }
 
@@ -174,14 +298,12 @@ static void ymmusic_release_note(unsigned char channel, unsigned char note)
 {
     for (int i = 0; i < YMMUSIC_NUMVOICES; i++)
     {
-        if (ymmusic_voices[i].channel == channel && ymmusic_voices[i].note == note)
+        ymmusic_voice_t *voice = ymmusic_voices + i;
+        if (voice->channel == channel && voice->note == note)
         {
-            ymmusic_voices[i].ticks = 0xffff;
-            // Disable mixer for channel.
-            // TODO: Maybe we want the sound to decay after release
-            *pPsgSndCtrl = 7;
-            *pPsgSndData = *pPsgSndCtrl | (1 << ymmusic_voices[i].ymidx) | (1 << (ymmusic_voices[i].ymidx + 3));
-            return;
+            voice->ticks = 0;
+            voice->released = true;
+            break;
         }
     }
 }
@@ -211,11 +333,85 @@ static void ymmusic_controller(unsigned char channel, unsigned char control, uns
     }
 }
 
-static unsigned char ymmusic_voice_volume(ymmusic_voice_t *voice)
-{
-    return ymmusic_channels[voice->channel].volume;
+// Retrieves the value belonging to the current tick from an envelope.
+static char ymmusic_envelope_value(envelope_t *env, unsigned short ticks, unsigned char released) {
+    if (released) {
+        // In release phase
+        ticks += env->release_begin;
+    } else if (ticks >= env->sustain_begin) {
+        // In sustain phase
+        unsigned short sustain_len = env->release_begin - env->sustain_begin;
+        ticks -= env->sustain_begin;
+        if ((sustain_len - 1) & sustain_len) {
+            // sustain length is arbitrary number
+            ticks %= sustain_len;
+        } else {
+            // sustain length is power of two
+            ticks &= sustain_len - 1;
+        }
+        ticks += env->sustain_begin;
+    }
+    if (ticks > env->last) {
+        ticks = env->last;
+    }
+    return env->data[ticks];
 }
 
+// Calculates the volume of a voice at the current tick.
+static unsigned char ymmusic_voice_volume(ymmusic_voice_t *voice)
+{
+    unsigned char volume = ymmusic_channels[voice->channel].volume;
+    if (voice->instrument && voice->instrument->volume_envelope) {
+        envelope_t *env = voice->instrument->volume_envelope;
+        volume += ymmusic_envelope_value(env, voice->ticks, voice->released);
+    }
+    if (volume > 127) volume = 127;
+    return volume;
+}
+
+// Calculates the note of a voice at the current tick, in 128th of a note
+static short ymmusic_voice_note(ymmusic_voice_t *voice)
+{
+    short note = voice->note << 7;
+    note += (short)ymmusic_channels[voice->channel].pitch_bend - 128;
+    if (voice->instrument && voice->instrument->note_envelope) {
+        envelope_t *env = voice->instrument->note_envelope;
+        note += ymmusic_envelope_value(env, voice->ticks, voice->released) << 7;
+    }
+    if (voice->instrument && voice->instrument->pitch_envelope) {
+        envelope_t *env = voice->instrument->pitch_envelope;
+        note += ymmusic_envelope_value(env, voice->ticks, voice->released);
+    }
+    if (note < 0) {
+        note = 0;
+    }
+    return note;
+}
+
+// Determines whether a voice has finished playing.
+static boolean ymmusic_voice_finished(ymmusic_voice_t *voice)
+{
+    if (voice->released)
+    {
+        // If there is a volume envelope, it controls how long the voice keeps playing after release.
+        if (voice->instrument && voice->instrument->volume_envelope) {
+            return voice->ticks > voice->instrument->volume_envelope->last;
+        }
+        // Otherwise, the voice is finished on release.
+        return true;
+    } else {
+        // If there is a volume_envelope and it has no sustain cycle (release_begin > last), the voice ends on its own.
+        if (voice->instrument && voice->instrument->volume_envelope
+            && voice->instrument->volume_envelope->release_begin > voice->instrument->volume_envelope->last)
+        {
+            return voice->ticks > voice->instrument->volume_envelope->last;
+        }
+        // Otherwise, the voice does not end until released.
+        return false;
+    }
+}
+
+// Debug function to dump a human-readable transcript of the MUS file.
 static void ymmusic_dump(unsigned char *data, FILE *f)
 {
     unsigned short lenSong = SHORT(*(unsigned short *)(data + 4));
@@ -389,46 +585,60 @@ void ymmusic_update()
         {
             continue;
         }
-        ymmusic_channel_t *channel = ymmusic_channels + voice->channel;
 
-        // Frequency
-        short divisor;
-        if (channel->pitch_bend < 128 - 8)
-        {
-            divisor = ymmusic_divisors[voice->note - 1][(channel->pitch_bend + 7) >> 3];
-        }
-        else
-        {
-            divisor = ymmusic_divisors[voice->note][(channel->pitch_bend - 128 + 8) >> 3];
-        }
-        *pPsgSndCtrl = 0 + 2 * voice->ymidx;
-        *pPsgSndData = divisor & 0xff;
-        *pPsgSndCtrl = 1 + 2 * voice->ymidx;
-        *pPsgSndData = divisor >> 8;
+        if (ymmusic_voice_finished(voice)) {
+            voice->ticks = 0xffff;
+        } else {
+            // Frequency in 128th of a note
+            unsigned short note = ymmusic_voice_note(voice);
 
-        // Amplitude
-        *pPsgSndCtrl = 8 + voice->ymidx;
-        unsigned char new_volume = (ymmusic_voice_volume(voice) >> 3) + snd_MusicVolume;
-        if (new_volume > 15)
-        {
-            new_volume -= 15;
-        }
-        else
-        {
-            new_volume = 0;
-        }
-        if (*pPsgSndCtrl != new_volume)
-        {
-            *pPsgSndData = new_volume;
-        }
+            short divisor = ymmusic_divisors[note >> 7][(note >> 3) & 15];
 
-        voice->ticks++;
+            // Push note to soundchip
+            *pPsgSndCtrl = 0 + 2 * voice->ymidx;
+            *pPsgSndData = divisor & 0xff;
+            *pPsgSndCtrl = 1 + 2 * voice->ymidx;
+            *pPsgSndData = divisor >> 8;
+
+            // Amplitude
+            unsigned char new_volume = (ymmusic_voice_volume(voice) >> 3) + snd_MusicVolume;
+            if (new_volume > 15)
+            {
+                new_volume -= 15;
+            }
+            else
+            {
+                new_volume = 0;
+            }
+            
+            // Push amplitude to soundchip
+            *pPsgSndCtrl = 8 + voice->ymidx;
+            if (*pPsgSndCtrl != new_volume)
+            {
+                *pPsgSndData = new_volume;
+            }
+
+            // Enable mixer
+            if (voice->ticks == 0 && !voice->released)
+            {
+                // Note just pressed? Enable mixer for channel.
+                *pPsgSndCtrl = 7;
+                if (voice->instrument && voice->instrument->enables_noise) {
+                    *pPsgSndData = *pPsgSndCtrl & ~(9 << (voice->ymidx));
+                } else {
+                    *pPsgSndData = *pPsgSndCtrl & ~(1 << voice->ymidx);
+                }
+            } 
+
+            voice->ticks++;
+        }
 
         if (voice->ticks == 0xffff)
         {
             // Reaching end? Disable mixer for channel.
             *pPsgSndCtrl = 7;
-            *pPsgSndData = *pPsgSndCtrl | (1 << voice->ymidx);
+            // 9 disables both voice and noise generator
+            *pPsgSndData = *pPsgSndCtrl | (9 << voice->ymidx);
         }
     }
 

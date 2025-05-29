@@ -425,7 +425,7 @@ void I_SetChannels()
   //  into signed samples.
   for (i=0 ; i<128 ; i++)
     for (j=0 ; j<256 ; j++)
-      vol_lookup[i*256+j] = (char)((i*(j-128))/128);
+      vol_lookup[i*256+j] = (char)((i*(j-128))/32);
 }	
 
  
