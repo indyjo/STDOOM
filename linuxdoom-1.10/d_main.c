@@ -233,6 +233,7 @@ void D_Display (void)
     if (gamestate == GS_LEVEL && gametic)
 	HU_Erase();
     
+    V_ClearRect();
     // do buffered drawing
     switch (gamestate)
     {
@@ -261,6 +262,8 @@ void D_Display (void)
 	D_PageDrawer ();
 	break;
     }
+    int old_dirtybox[4] = {dirtybox[0], dirtybox[1], dirtybox[2], dirtybox[3]};
+
     
     // draw buffered stuff to screen
     I_UpdateNoBlit ();
@@ -321,6 +324,7 @@ void D_Display (void)
     // normal update
     if (!wipe)
     {
+	for(short i=0; i<4; i++) dirtybox[i] = old_dirtybox[i];
 	I_FinishUpdate ();              // page flip or blit buffer
 	return;
     }

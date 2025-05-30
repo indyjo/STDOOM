@@ -33,6 +33,7 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 #include "i_system.h"
 #include "v_video.h"
 #include "m_argv.h"
+#include "m_bbox.h"
 #include "d_main.h"
 
 #include "doomdef.h"
@@ -293,6 +294,7 @@ void I_FinishUpdate (void)
     }
 
     c2p_screen(st_screen, screens[0]);
+    c2p_statusbar(st_screen, screens[0], dirtybox[BOXBOTTOM], dirtybox[BOXTOP] + 1, dirtybox[BOXLEFT], dirtybox[BOXRIGHT] + 1);
 }
 
 

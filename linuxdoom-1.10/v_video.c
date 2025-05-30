@@ -149,7 +149,12 @@ V_MarkRect
     M_AddToBox (dirtybox, x, y); 
     M_AddToBox (dirtybox, x+width-1, y+height-1); 
 } 
- 
+
+void
+V_ClearRect()
+{
+    M_ClearBox (dirtybox);
+}
 
 //
 // V_CopyRect 

@@ -102,7 +102,11 @@ STlib_drawNum
     
     int		neg;
 
-    n->oldnum = *n->num;
+    if (!refresh && n->oldnum == num)
+    {
+	return;
+    }
+    n->oldnum = num;
 
     neg = num < 0;
 

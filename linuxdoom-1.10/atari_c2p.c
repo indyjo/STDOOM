@@ -768,38 +768,57 @@ void c2p_screen(unsigned char *out, const unsigned char *in) {
 	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
     }
 #else
-    short splitline = 0;
     boolean zoom_allowed = gamestate == GS_LEVEL
         && !menuactive && !inhelpscreens && !automapactive;
-    if (zoom_allowed && viewwidth <= SCREENWIDTH/2) {
-        splitline = 200-32;
-        if (viewwidth <= SCREENWIDTH/4) {
-            // 4x zoom
-            for (short line = 0; line < splitline; line++ ) {
-                short phase = line & 3;
-                if (phase < 2) {
-                    c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
-                } else if (phase == 2) {
-                    memcpy(out + 160*line, out + 160*line - 320, 320);
-                }
-            }
-        } else {
-            // 2x zoom
-            for (short line = 0; line < splitline; line++ ) {
-                c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
-            }
-        }
-    }
-    static int interlace_phase = 0;
-    if (splitline == 0) {
-        for (int line = splitline; line < SCREENHEIGHT; line++ ) {
+    short splitline = !zoom_allowed || viewheight == SCREENHEIGHT ? SCREENHEIGHT : SCREENHEIGHT - 32;
+    if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
+        for (short line = 0; line < splitline; line++ ) {
             c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+        }
+    } else if(viewwidth > SCREENWIDTH/4) {
+        // 2x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
         }
     } else {
-        for (int line = splitline + interlace_phase; line < SCREENHEIGHT; line+= 2 ) {
-            c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+        // 4x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            short phase = line & 3;
+            if (phase < 2) {
+                c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
+            } else if (phase == 2) {
+                memcpy(out + 160*line, out + 160*line - 320, 320);
+            }
         }
-        interlace_phase = (interlace_phase+1) % 2;
     }
 #endif
+}
+
+void c2p_statusbar(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
+    if (y_end <= 0 || x_end <= 0)
+        return;
+    boolean statusbar_drawn = gamestate == GS_LEVEL
+        && !menuactive && !inhelpscreens && !automapactive && viewheight < SCREENHEIGHT;
+    if (!statusbar_drawn)
+        return;
+    if (y_begin < SCREENHEIGHT - 32)
+        y_begin = SCREENHEIGHT - 32;
+    if (y_end > SCREENHEIGHT)
+        y_end = SCREENHEIGHT;
+    if (x_begin < 0)
+        x_begin = 0;
+    if (x_end > SCREENWIDTH)
+        x_end = SCREENWIDTH;
+
+    x_begin &= ~15;
+    x_end = (x_end + 15) & ~15;
+    out += y_begin * 160 + x_begin / 2;
+    in += y_begin * 320 + x_begin;
+    //fprintf(stderr, "%d %d %d %d \r", y_begin, y_end, x_begin, x_end);
+
+    for (int line = y_begin; line < y_end; line++ ) {
+        c2p(out, in, x_end - x_begin, c2p_table[line&3]);
+        out += 160;
+        in += 320;
+    }
 }
