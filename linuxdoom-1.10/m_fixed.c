@@ -26,6 +26,7 @@ static const char
 rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 #include <stdint.h>
+#include <stdio.h>
 #include "stdlib.h"
 
 #include "doomtype.h"
@@ -37,7 +38,25 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 #include "m_fixed.h"
 
 
+#ifdef __M68000__
 
+// Emits a mulu.w instruction. It's quite difficult to get gcc to do that :-)
+static uint32_t mulu(uint16_t a, uint16_t b) {
+#ifdef USEASM
+    register uint32_t result = a;
+    asm (
+        "mulu.w     %[b],%[result]  \n\t"
+        : [result] "+d" (result)
+        : [b] "d" (b)
+        : "cc"
+    );
+    return result;
+#else
+    return (uint32_t)a * b;
+#endif
+}
+
+#endif // __M68000__
 
 // Fixme. __USE_C_FIXED__ or something.
 
@@ -47,25 +66,27 @@ FixedMul
   fixed_t	b )
 {
 #ifdef __M68000__
-    uint16_t alw = a;
-    int16_t ahw = a >> FRACBITS;
-    uint16_t blw = b;
-    int16_t bhw = b >> FRACBITS;
+    // Is the result a negative number?
+    boolean neg = 0 != ((a ^ b) & 0x80000000);
 
-    if (bhw == 0) {
-        uint32_t ll = (uint32_t) alw * blw;
-        int32_t hl = ( int32_t) ahw * blw;
-        return (ll >> FRACBITS) + hl;
-    } else if (alw == 0) {
-        //return ahw * b;
-        int32_t hl = ( int32_t) ahw * blw;
-        int32_t hh = ( int32_t) ahw * bhw;
-        return hl + (hh << FRACBITS);
-    } else {
-        uint32_t ll = (uint32_t) alw * blw;
-        int32_t hl = ( int32_t) ahw * blw;
-        return (a * bhw) + (ll >> FRACBITS) + hl;
-    }
+    // Only work with unsigned numbers.
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    uint16_t alw = a;
+    uint16_t ahw = a >> FRACBITS;
+    uint16_t blw = b;
+    uint16_t bhw = b >> FRACBITS;
+
+    uint32_t hh = ahw && bhw ? mulu(ahw, bhw) << FRACBITS : 0;
+    uint32_t hl = ahw && blw ? mulu(ahw, blw) : 0;
+    uint32_t lh = alw && bhw ? mulu(alw, bhw) : 0;
+    
+    // Make sure we round towards -inf
+    uint32_t ll = alw && blw ? (mulu(alw, blw) + (neg ? 0xffff : 0)) >> FRACBITS : 0;
+
+    int32_t result = hh + hl + lh + ll;
+    if (neg) result = -result;
+    return result;
 #else
     return ((long long) a * (long long) b) >> FRACBITS;
 #endif
@@ -77,14 +98,19 @@ FixedScale
   short	b )
 {
 #ifdef __M68000__
-    uint16_t alw = a;
-    int16_t ahw = a >> FRACBITS;
-    uint16_t blw = b < 0 ? -2*b : 2*b;
+    // Is the result a negative number?
+    boolean neg = 0 != ((a ^ b) & 0x80000000);
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
 
-    uint32_t ll = (uint32_t) alw * blw;
-    int32_t hl = ( int32_t) ahw * blw;
-    fixed_t result = (ll >> FRACBITS) + hl;
-    if (b < 0) result = -result;
+    uint16_t alw = a;
+    uint16_t ahw = a >> FRACBITS;
+    uint16_t blw = 2*b;
+
+    uint32_t hl = mulu(ahw, blw);
+    uint32_t ll = mulu(alw, blw) + neg ? 0xffff : 0;
+    fixed_t result = hl + (ll >> FRACBITS);
+    if (neg) result = -result;
     return result;
 #else
     return FixedMul(a,b << 1);
