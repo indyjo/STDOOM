@@ -360,8 +360,8 @@ void R_DrawMaskedColumn (column_t* column)
     {
 	// calculate unclipped screen coordinates
 	//  for post
-	topscreen = sprtopscreen + spryscale*column->topdelta;
-	bottomscreen = topscreen + spryscale*column->length;
+	topscreen = sprtopscreen + FixedMulShort(spryscale, column->topdelta);
+	bottomscreen = topscreen + FixedMulShort(spryscale, column->length);
 
 	dc_yl = (topscreen+FRACUNIT-1)>>FRACBITS;
 	dc_yh = (bottomscreen-1)>>FRACBITS;

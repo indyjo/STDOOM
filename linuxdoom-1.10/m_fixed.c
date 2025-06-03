@@ -117,6 +117,52 @@ FixedScale
 #endif
 }
 
+fixed_t
+FixedMulShort
+( fixed_t	a,
+  short	b )
+{
+#ifdef __M68000__
+
+#ifdef USEASM
+    register fixed_t result asm("d0");
+    register short tmp asm("d1");
+    asm (
+        "move.w	4(%%sp),%[res]	/* ah -> res */ \n\t"
+	    "mulu.w	10(%%sp),%[res]	/* ah*b */      \n\t"
+	    "swap	%[res]                          \n\t"
+	    "clr.w	%[res]                          \n\t"
+	    "move.w	6(%%sp),%[tmp]	/* al -> tmp */ \n\t"
+	    "mulu.w	10(%%sp),%[tmp]	/* al*b */      \n\t"
+	    "add.l	%[tmp], %[res]                  \n\t"
+        : [res] "=d" (result)
+        , [tmp] "=d" (tmp)
+        : // no inputs
+        : "cc"
+    );
+    //fprintf(stderr, "%08x * %04hx = %08x\n", a, b, result);
+    return result;
+#else
+    // Is the result a negative number?
+    boolean neg = 0 != ((a ^ b) & 0x80000000);
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+
+    uint16_t alw = a;
+    uint16_t ahw = a >> FRACBITS;
+
+    uint32_t hh = mulu(ahw, b) << FRACBITS;
+    uint32_t lh = mulu(alw, b);
+    fixed_t result = hh + lh;
+    if (neg) result = -result;
+    return result;
+#endif
+
+#else
+    return FixedMul(a,(fixed_t)b << 16);
+#endif
+}
+
 
 //
 // FixedDiv, C version.

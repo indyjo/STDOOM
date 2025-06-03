@@ -24,7 +24,7 @@
 static const char
 rcsid[] = "$Id: p_sight.c,v 1.3 1997/01/28 22:08:28 b1 Exp $";
 
-
+#include <stdint.h>
 #include "doomdef.h"
 
 #include "i_system.h"
@@ -46,6 +46,20 @@ fixed_t		t2y;
 
 int		sightcounts[2];
 
+static int32_t muls(int16_t a, int16_t b) {
+#ifdef USEASM
+    register int32_t result = a;
+    asm (
+        "muls.w     %[b],%[result]  \n\t"
+        : [result] "+d" (result)
+        : [b] "d" (b)
+        : "cc"
+    );
+    return result;
+#else
+    return (int32_t)a * b;
+#endif
+}
 
 //
 // P_DivlineSide
@@ -87,8 +101,8 @@ P_DivlineSide
     dx = (x - node->x);
     dy = (y - node->y);
 
-    left =  (node->dy>>FRACBITS) * (dx>>FRACBITS);
-    right = (dy>>FRACBITS) * (node->dx>>FRACBITS);
+    left =  muls(node->dy>>FRACBITS, dx>>FRACBITS);
+    right = muls(dy>>FRACBITS, node->dx>>FRACBITS);
 	
     if (right < left)
 	return 0;	// front side
@@ -312,7 +326,7 @@ P_CheckSight
     // Determine subsector entries in REJECT table.
     s1 = (t1->subsector->sector - sectors);
     s2 = (t2->subsector->sector - sectors);
-    pnum = s1*numsectors + s2;
+    pnum = muls(s1, numsectors) + s2;
     bytenum = pnum>>3;
     bitnum = 1 << (pnum&7);
 
