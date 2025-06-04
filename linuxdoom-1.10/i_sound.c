@@ -141,7 +141,11 @@ int 		lengths[NUMSFX];
 //           - playbuffer points to the one that has most recently been sent to DMA sound
 //           - lastbuffer points to the one that was playing before the current playbuffer, but which
 //             might still be being finished by the DMA sound
-signed char     zerobuffer[MIXBUFFERSIZE], sndbuffer1[MIXBUFFERSIZE], sndbuffer2[MIXBUFFERSIZE], sndbuffer3[MIXBUFFERSIZE];
+signed char sndbuffers[4*MIXBUFFERSIZE];
+#define zerobuffer (sndbuffers)
+#define sndbuffer1 (sndbuffers + 1*MIXBUFFERSIZE)
+#define sndbuffer2 (sndbuffers + 2*MIXBUFFERSIZE)
+#define sndbuffer3 (sndbuffers + 3*MIXBUFFERSIZE)
 signed char	*mixbuffer = sndbuffer1, *playbuffer = sndbuffer2, *lastbuffer = sndbuffer3;
 
 
@@ -531,16 +535,86 @@ int I_SoundIsPlaying(int handle)
 __attribute_noinline__ boolean I_ShouldSubmitSound() {
   unsigned long addr = *pDmaSndAdrLo | (*pDmaSndAdrMi << 8) | (*pDmaSndAdrHi << 16);
   // Sometimes we'll see a runaway DMA sound chip. Stop it in its tracks!
-  if (addr < (unsigned long) zerobuffer || addr > (unsigned long) sndbuffer3 + MIXBUFFERSIZE) {
+  if (addr < sndbuffers || addr > sndbuffers + sizeof(sndbuffers)) {
         *pDmaSndCtrl &= ~DMASND_CTRL_ON;
         return 1;
   }
   boolean on = *pDmaSndCtrl & DMASND_CTRL_ON;
-  boolean result = !on || addr == 0 || (addr > playbuffer + MIXBUFFERSIZE/2 && addr <= playbuffer + MIXBUFFERSIZE - 8);
-  //printf("\rba %06lx ad %06lx pl %06p on %d -> %d", base, addr, playbuffer, on, result);
+  // Assumption: if the most recently submitted buffer is not playing yet,
+  // we can safely wait for the next VBL interrupt.
+  boolean result = !on || addr == 0 || (addr >= playbuffer && addr <= playbuffer + MIXBUFFERSIZE);
   return result;
 }
 
+#define BLOCKSIZE 4
+
+static void mix_channel(short *out, short chan, boolean first)
+{
+  char *leftvol_lookup = channelleftvol_lookup[chan];
+  char *rightvol_lookup = channelrightvol_lookup[chan];
+  unsigned char *in = channels[chan], *channelend = channelsend[chan];
+  unsigned int step = channelstep[chan];
+  unsigned int remainder = channelstepremainder[chan];
+  short *end = out + SAMPLECOUNT;
+
+  // Optimization: sample won't end in this frame
+  if (in + ((SAMPLECOUNT * step + remainder) >> 16) < channelend)
+  {
+    while (out != end)
+    {
+      // Optimization: try BLOCKSIZE blocks of contiguous samples hoping that most samples are played
+      // near their native frequency
+      while (out + BLOCKSIZE < end - 1 && ((remainder + BLOCKSIZE * step) >> 16) == BLOCKSIZE) {
+        for (short i = 0; i<BLOCKSIZE; i++) {
+          unsigned char sample = *in++;
+          short dl = leftvol_lookup[sample] << 8 | (rightvol_lookup[sample] & 0xff);
+          if (first)
+            *out++ = dl;
+          else
+            *out++ += dl;
+        }
+        remainder += BLOCKSIZE * step;
+      }
+      remainder &= 0xffff;
+
+      unsigned char sample = *in;
+      short dl = leftvol_lookup[sample] << 8 | (rightvol_lookup[sample] & 0xff);
+      if (first)
+        *out++ = dl;
+      else
+        *out++ += dl;
+      remainder += step;
+      in += remainder >> 16;
+      remainder &= 0xffff;
+    }
+    channels[chan] = in;
+    channelstepremainder[chan] = remainder;
+    return;
+  }
+  
+  // Sample will end in this frame. Fill frame until end of sample.
+  do
+  {
+    unsigned char sample = *in;
+    short dl = leftvol_lookup[sample] << 8 | (rightvol_lookup[sample] & 0xff);
+    if (first)
+      *out++ = dl;
+    else
+      *out++ += dl;
+    remainder += step;
+    in += remainder >> 16;
+    remainder &= 65536 - 1;
+  } while (in < channelend);
+
+  // The channel has ended.
+  channels[chan] = 0;
+
+  // Fill remaining buffer bytes with zeros if this is the first sample.
+  if (first) {
+    while (out != end)
+      *out++ = 0;
+  }
+}
 
 //
 // This function loops all active (internal) sound
@@ -562,120 +636,20 @@ void I_UpdateSound( void )
   static int misses = 0;
 #endif
 
-  
-  // Mix current sound data.
-  // Data, from raw sound, for right and left.
-  register unsigned char sample;
-  register short	dl;
-  
-  // Pointers in global mixbuffer, left, right, end.
-  signed short*	        out;
-  signed short*	        end;
-
-  // Mixing channel index.
-  short				chan;
-    
-    // Left and right channel combined in global mixbuffer, alternating.
-    out = (signed short*) mixbuffer;
-
-    // Determine end, for left channel only
-    //  (right channel is implicit).
-    end = out + SAMPLECOUNT;
-
-    // Collect active channels into a kind of linked list.
-    short next_active_channel[NUM_CHANNELS+1];
-    short last_active_channel = NUM_CHANNELS;
-    short num_active_channels = 0;
-    for (chan = 0; chan < NUM_CHANNELS; chan++) {
-        if (channels[chan]) {
-            num_active_channels++;
-            next_active_channel[last_active_channel] = chan;
-            last_active_channel = chan;
-        }
-    }
-    next_active_channel[last_active_channel] = NUM_CHANNELS;
-
-    if (num_active_channels == 0) {
-        // Optimization: If no channels active, use the pre-initialized zero frame.
-        mixbuffer = zerobuffer;
-        out = end;
-    } else if (num_active_channels == 1) {
-        // Optimization: If exactly one channel active, don't mix
-        chan = last_active_channel;
-
-        if (channels[chan] + ((SAMPLECOUNT*channelstep[chan] + channelstepremainder[chan]) >> 16) < channelsend[chan]) {
-            // Optimization: sample won't end in this frame
-            while (out != end) {
-                sample = *channels[ chan ];
-                dl = channelleftvol_lookup[chan][sample] << 8 | (channelrightvol_lookup[chan][sample] & 0xff);
-                channelstepremainder[ chan ] += channelstep[ chan ];
-                channels[ chan ] += channelstepremainder[ chan ] >> 16;
-                channelstepremainder[ chan ] &= 65536-1;
-                *out++ = dl;
-            }
-        }
-        while (out != end) {
-            sample = *channels[ chan ];
-            dl = channelleftvol_lookup[chan][sample] << 8 | (channelrightvol_lookup[chan][sample] & 0xff);
-            channelstepremainder[ chan ] += channelstep[ chan ];
-            channels[ chan ] += channelstepremainder[ chan ] >> 16;
-            channelstepremainder[ chan ] &= 65536-1;
-            if (channels[ chan ] >= channelsend[ chan ]) {
-                channels[ chan ] = 0;
-                break;
-            }
-            *out++ = dl;
-        }
-        // Fill remaining buffer bytes with zeros if sample ended prematurely.
-        while (out != end) *out++ = 0;
-    }
-
-    // Mix sounds into the mixing buffer.
-    // Loop over step*SAMPLECOUNT,
-    //  that is 512 values for two channels.
-    while (out != end)
+  short num_active_channels = 0;
+  for (short chan = 0; chan < NUM_CHANNELS; chan++)
+  {
+    if (channels[chan])
     {
-	// Reset left/right value. 
-	dl = 0;
-
-	// Love thy L2 chache - made this a loop.
-	// Now more channels could be set at compile time
-	//  as well. Thus loop those  channels.
-	chan = NUM_CHANNELS;
-        short prev_chan = chan;
-        while ((chan = next_active_channel[chan]) != NUM_CHANNELS )
-	{
-            // Get the raw data from the channel. 
-            sample = *channels[ chan ];
-            // Add left and right part
-            //  for this channel (sound)
-            //  to the current data.
-            // Adjust volume accordingly.
-            dl += (channelleftvol_lookup[ chan ][sample]) << 8 | (channelrightvol_lookup[ chan ][sample] & 0xff);
-            // Increment index ???
-            channelstepremainder[ chan ] += channelstep[ chan ];
-            // MSB is next sample???
-            channels[ chan ] += channelstepremainder[ chan ] >> 16;
-            // Limit to LSB???
-            channelstepremainder[ chan ] &= 65536-1;
-
-            // Check whether we are done.
-            if (channels[ chan ] >= channelsend[ chan ]) {
-                channels[ chan ] = 0;
-                
-                next_active_channel[prev_chan] = next_active_channel[chan];
-                chan = prev_chan;
-                continue;
-            }
-            prev_chan = chan;
-	}
-	
-        // Write to mixbuffer
-        *out = dl;
-
-	// Increment current pointers in mixbuffer.
-	out++;
+      mix_channel((short*) mixbuffer, chan, num_active_channels == 0);
+      num_active_channels++;
     }
+  }
+
+  if (num_active_channels == 0) {
+    // Optimization: If no channels were active, use the pre-initialized zero frame.
+    mixbuffer = zerobuffer;
+  }
 
 #ifdef SNDINTR
     // Debug check.
@@ -975,7 +949,10 @@ static volatile void (**pVblVec)() = (void *)0x70;
 static void (*pOldVblVec)() = 0;
 
 __attribute__((interrupt)) void vbl_interrupt() {
- 	//volatile unsigned short *reg = (unsigned short*) 0xff8240;
+  static boolean in_vbl = false;
+  if (in_vbl) return;
+  in_vbl = true;
+  //volatile unsigned short *reg = (unsigned short*) 0xff8240;
   //unsigned short old = *reg;
   //*reg = 0x000f;
   if (!nomusic) ymmusic_update();
@@ -989,6 +966,7 @@ __attribute__((interrupt)) void vbl_interrupt() {
       I_HandleSoundTimer(0);
     }
   }
+  in_vbl = false;
   //*reg = old;
 }
 
