@@ -128,16 +128,18 @@ FixedMulShort
     register fixed_t result asm("d0");
     register short tmp asm("d1");
     asm (
-        "move.w	4(%%sp),%[res]	/* ah -> res */ \n\t"
-	    "mulu.w	10(%%sp),%[res]	/* ah*b */      \n\t"
+	    "move.w	%[a],%[tmp]	    /* al -> tmp */ \n\t"
+	    "mulu.w	%[b],%[tmp]	    /* al*b */      \n\t"
+        "swap   %[a]                            \n\t"
+        "move.w	%[a],%[res]	    /* ah -> res */ \n\t"
+	    "mulu.w	%[b],%[res]	    /* ah*b */      \n\t"
 	    "swap	%[res]                          \n\t"
 	    "clr.w	%[res]                          \n\t"
-	    "move.w	6(%%sp),%[tmp]	/* al -> tmp */ \n\t"
-	    "mulu.w	10(%%sp),%[tmp]	/* al*b */      \n\t"
 	    "add.l	%[tmp], %[res]                  \n\t"
-        : [res] "=d" (result)
-        , [tmp] "=d" (tmp)
-        : // no inputs
+        : [res] "=&d" (result)
+        , [tmp] "=&d" (tmp)
+        , [a] "+&d" (a)
+        : [b] "d" (b)
         : "cc"
     );
     //fprintf(stderr, "%08x * %04hx = %08x\n", a, b, result);

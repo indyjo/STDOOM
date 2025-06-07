@@ -14,6 +14,7 @@ History of versions under Benchmark
 - V8 Optimize R_DrawColumn and R_DrawFuzzColumn
 - V9 Optimize status bar
 - V10 Optimise FixedMul and FixedScale
+- V11 Compile with 'fastcall' calling convention
 
 Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V0 112087 -> 0.666 fps
@@ -21,6 +22,7 @@ Compiled for 68000, run on 8MHz STE 68000 (TOS 1.62 50Hz):
   V8  79073 -> 0.945 fps
   V9  73130 -> 1.021 fps
   V10 69067 -> 1.081 fps
+  V11 64343 -> 1.161 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
   V0 112292 -> 0.665 fps
@@ -30,6 +32,7 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz):
   V8  78766 -> 0.948 fps
   V9  72846 -> 1.025 fps
   V10 68809 -> 1.085 fps
+  V11 64103 -> 1.165 fps
 
 Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  85036 -> 0.878 fps
@@ -41,6 +44,7 @@ Compiled for 68000, run on 8MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V8  45855 -> 1.629 fps
   V9  40404 -> 1.849 fps
   V10 37809 -> 1.975 fps
+  V11 34170 -> 2.186 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V0  55181 -> 1.354 fps
@@ -50,6 +54,7 @@ Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz):
   V8  38882 -> 1.921 fps
   V9  35959 -> 2.077 fps
   V10 33961 -> 2.199 fps
+  V11 31638 -> 2.361 fps
 
 Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V0  41867 -> 1.784 fps
@@ -61,6 +66,7 @@ Compiled for 68000, run on 16MHz STE 68000 (EmuTOS 60Hz) (smallest view size):
   V8  22635 -> 3.300 fps
   V9  19941 -> 3.746 fps
   V10 18660 -> 4.003 fps
+  V11 16867 -> 4.428 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  29912 -> 2.497 fps
@@ -70,6 +76,7 @@ Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V8  20862 -> 3.580 fps
   V9  19440 -> 3.842 fps
   V10 18523 -> 4.032 fps
+  V11 16652 -> 4.485 fps
 
 Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V0  22787 -> 3.278 fps
@@ -81,6 +88,7 @@ Compiled for 68000, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V8  13652 -> 5.471 fps
   V9  12416 -> 6.016 fps
   V10 11823 -> 6.317 fps
+  V11 10384 -> 7.193 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V0  17768 -> 4.204 fps
@@ -88,6 +96,7 @@ Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz):
   V3  17794 -> 4.197 fps
   V8  15254 -> 4.897 fps
   V9  14438 -> 5.173 fps
+  V11 13708 -> 5.449 fps
 
 Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view size):
   V0  12927 -> 5.778 fps
@@ -96,3 +105,5 @@ Compiled for 68020+68881, run on 16MHz STE 68020 (EmuTOS 60Hz) (smallest view si
   V3  11244 -> 6.643 fps
   V8   9784 -> 7.634 fps
   V9   8970 -> 8.327 fps
+  V11  8348 -> 8.947 fps
+

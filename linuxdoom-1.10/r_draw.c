@@ -149,8 +149,8 @@ void R_DrawColumn (void)
         asm (
                 "move.w %[frac],%[tmp]                  \n\t"
                 "lsr.w  %[shift],%[tmp]                 \n\t"
-                "move.b (%[source],%[tmp]),%[tmp]       \n\t"
-                "move.b (%[colormap],%[tmp]),%[tmp]     \n\t"
+                "move.b (%[source],%[tmp].w),%[tmp]     \n\t"
+                "move.b (%[colormap],%[tmp].w),%[tmp]   \n\t"
                 // outputs
                 : [tmp] "=d" (tmp)
                 // inputs
