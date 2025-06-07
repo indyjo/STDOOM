@@ -1,20 +1,26 @@
 #include <mint/osbind.h>
 #include "atari_c2p.h"
+#include "i_system.h"
 #include "r_main.h"
 #include "w_wad.h"
 #include "z_zone.h"
 #include "doomdef.h"
 
-// Set to 1 to use grayscale medium resolution (640x200) rendering.
-#define USE_MIDRES 0
-
-#if !USE_MIDRES
 // Subset of DOOM colors to use for Atari palette
-const unsigned char subset[] = 
+const unsigned char subset_lorez[] = 
     {0, 90, 101, 241, 202, 252, 38, 219, 144, 136, 158, 120, 72, 58, 249, 4};
+const unsigned char subset_midrez[] = 
+    {0, 166, 156, 210, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const unsigned char *subset;
+short num_colors;
 
-// [DOOM color 0..255][weight of ST color 0..16]
-static unsigned char mix_weights[256][16] = {
+// Some function pointers depending on screen resolution.
+void (*c2p_statusbar_drawfunc)(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end);
+void (*c2p_screen_drawfunc)(unsigned char *out, const unsigned char *in);
+
+
+// [DOOM color 0..255][ST color 0..15]
+static unsigned char mix_weights_lorez[256][16] = {
 { 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,}, // 0: 0.000000
 { 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0,}, // 1: 1.071797
 { 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,}, // 2: 0.956298
@@ -272,7 +278,266 @@ static unsigned char mix_weights[256][16] = {
 { 10, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,}, // 254: 2.503329
 { 0, 0, 0, 0, 0, 3, 0, 0, 9, 4, 0, 0, 0, 0, 0, 0,}, // 255: 2.857005
 };
-#endif
+
+// [DOOM color 0..255][ST color 0..3]
+static unsigned char mix_weights_midrez[256][4] = {
+{ 16, 0, 0, 0,}, // 0: 0.000000
+{ 14, 0, 2, 0,}, // 1: 1.369409
+{ 16, 0, 0, 0,}, // 2: 0.956298
+{ 3, 0, 13, 0,}, // 3: 1.996569
+{ 0, 0, 0, 16,}, // 4: 14.476759
+{ 13, 0, 3, 0,}, // 5: 1.297354
+{ 16, 0, 0, 0,}, // 6: 1.091239
+{ 16, 0, 0, 0,}, // 7: 0.455137
+{ 16, 0, 0, 0,}, // 8: 0.220837
+{ 9, 0, 7, 0,}, // 9: 1.280742
+{ 11, 0, 5, 0,}, // 10: 1.385516
+{ 13, 0, 3, 0,}, // 11: 1.345930
+{ 16, 0, 0, 0,}, // 12: 1.135863
+{ 6, 4, 6, 0,}, // 13: 1.932729
+{ 8, 3, 5, 0,}, // 14: 1.988873
+{ 9, 0, 7, 0,}, // 15: 2.096412
+{ 0, 3, 0, 13,}, // 16: 7.179754
+{ 0, 4, 0, 12,}, // 17: 7.181691
+{ 0, 5, 0, 11,}, // 18: 7.426684
+{ 0, 6, 0, 10,}, // 19: 7.611697
+{ 0, 7, 0, 9,}, // 20: 7.774511
+{ 0, 8, 0, 8,}, // 21: 7.543132
+{ 0, 9, 0, 7,}, // 22: 8.051924
+{ 0, 10, 0, 6,}, // 23: 7.786218
+{ 0, 11, 0, 5,}, // 24: 7.542267
+{ 0, 12, 0, 4,}, // 25: 7.841898
+{ 0, 12, 0, 4,}, // 26: 7.501996
+{ 0, 13, 0, 3,}, // 27: 7.313871
+{ 0, 14, 0, 2,}, // 28: 7.221093
+{ 0, 16, 0, 0,}, // 29: 6.350010
+{ 0, 16, 0, 0,}, // 30: 4.624256
+{ 0, 16, 0, 0,}, // 31: 3.866672
+{ 0, 16, 0, 0,}, // 32: 2.732074
+{ 0, 16, 0, 0,}, // 33: 2.476375
+{ 0, 16, 0, 0,}, // 34: 2.423065
+{ 0, 16, 0, 0,}, // 35: 3.180943
+{ 3, 13, 0, 0,}, // 36: 3.614265
+{ 4, 12, 0, 0,}, // 37: 3.638918
+{ 6, 10, 0, 0,}, // 38: 3.517645
+{ 6, 10, 0, 0,}, // 39: 3.532341
+{ 7, 9, 0, 0,}, // 40: 3.406162
+{ 8, 8, 0, 0,}, // 41: 3.370266
+{ 9, 7, 0, 0,}, // 42: 3.197170
+{ 10, 6, 0, 0,}, // 43: 3.073067
+{ 10, 6, 0, 0,}, // 44: 2.821478
+{ 11, 5, 0, 0,}, // 45: 2.760862
+{ 12, 4, 0, 0,}, // 46: 2.522095
+{ 12, 4, 0, 0,}, // 47: 2.401772
+{ 0, 0, 0, 16,}, // 48: 7.144780
+{ 0, 0, 0, 16,}, // 49: 4.392898
+{ 0, 0, 0, 16,}, // 50: 1.731993
+{ 0, 0, 0, 16,}, // 51: 1.029674
+{ 0, 0, 0, 16,}, // 52: 2.360215
+{ 0, 0, 0, 16,}, // 53: 4.864279
+{ 0, 2, 0, 14,}, // 54: 6.889926
+{ 0, 3, 0, 13,}, // 55: 7.342029
+{ 0, 4, 0, 12,}, // 56: 8.529290
+{ 0, 5, 0, 11,}, // 57: 8.237998
+{ 0, 6, 0, 10,}, // 58: 7.967037
+{ 0, 7, 0, 9,}, // 59: 7.710719
+{ 0, 8, 0, 8,}, // 60: 7.469240
+{ 0, 9, 0, 7,}, // 61: 7.249010
+{ 0, 10, 0, 6,}, // 62: 7.063965
+{ 0, 10, 0, 6,}, // 63: 6.695242
+{ 0, 11, 0, 5,}, // 64: 5.825050
+{ 0, 12, 0, 4,}, // 65: 5.162613
+{ 0, 12, 0, 4,}, // 66: 4.730431
+{ 0, 13, 0, 3,}, // 67: 4.347106
+{ 0, 14, 0, 2,}, // 68: 4.947093
+{ 0, 11, 3, 2,}, // 69: 4.841923
+{ 0, 16, 0, 0,}, // 70: 3.393552
+{ 0, 12, 4, 0,}, // 71: 2.486208
+{ 0, 10, 6, 0,}, // 72: 1.304411
+{ 0, 7, 9, 0,}, // 73: 1.557672
+{ 3, 6, 7, 0,}, // 74: 1.736759
+{ 5, 4, 7, 0,}, // 75: 1.727179
+{ 7, 4, 5, 0,}, // 76: 1.707610
+{ 9, 3, 4, 0,}, // 77: 1.854734
+{ 10, 0, 6, 0,}, // 78: 1.596184
+{ 12, 0, 4, 0,}, // 79: 1.483997
+{ 0, 0, 0, 16,}, // 80: 8.963114
+{ 0, 0, 0, 16,}, // 81: 7.172874
+{ 0, 0, 0, 16,}, // 82: 6.677398
+{ 0, 0, 0, 16,}, // 83: 6.999696
+{ 0, 0, 0, 16,}, // 84: 8.523647
+{ 0, 0, 3, 13,}, // 85: 9.127682
+{ 0, 0, 4, 12,}, // 86: 8.925838
+{ 0, 0, 5, 11,}, // 87: 8.527882
+{ 0, 0, 6, 10,}, // 88: 8.160164
+{ 0, 0, 6, 10,}, // 89: 8.024659
+{ 0, 0, 7, 9,}, // 90: 7.672976
+{ 0, 0, 8, 8,}, // 91: 7.508930
+{ 0, 0, 9, 7,}, // 92: 7.239408
+{ 0, 0, 10, 6,}, // 93: 7.030149
+{ 0, 0, 10, 6,}, // 94: 6.670117
+{ 0, 0, 11, 5,}, // 95: 6.411955
+{ 0, 0, 12, 4,}, // 96: 6.260678
+{ 0, 0, 12, 4,}, // 97: 6.010264
+{ 0, 0, 13, 3,}, // 98: 5.781699
+{ 0, 0, 14, 2,}, // 99: 5.799597
+{ 0, 0, 14, 2,}, // 100: 5.442561
+{ 0, 0, 16, 0,}, // 101: 3.968404
+{ 0, 0, 16, 0,}, // 102: 2.203741
+{ 0, 0, 16, 0,}, // 103: 1.507881
+{ 0, 0, 16, 0,}, // 104: 1.464000
+{ 4, 0, 12, 0,}, // 105: 1.887077
+{ 5, 0, 11, 0,}, // 106: 1.794059
+{ 7, 0, 9, 0,}, // 107: 1.640110
+{ 8, 0, 8, 0,}, // 108: 1.576902
+{ 10, 0, 6, 0,}, // 109: 1.502109
+{ 11, 0, 5, 0,}, // 110: 1.362379
+{ 12, 0, 4, 0,}, // 111: 1.267085
+{ 0, 0, 0, 16,}, // 112: 20.091642
+{ 0, 0, 5, 11,}, // 113: 19.273121
+{ 0, 0, 7, 9,}, // 114: 17.448635
+{ 0, 0, 8, 8,}, // 115: 15.698641
+{ 0, 0, 10, 6,}, // 116: 13.942268
+{ 0, 0, 11, 5,}, // 117: 12.372309
+{ 0, 0, 12, 4,}, // 118: 11.001409
+{ 0, 0, 13, 3,}, // 119: 10.120058
+{ 0, 0, 16, 0,}, // 120: 6.951893
+{ 0, 0, 16, 0,}, // 121: 4.175305
+{ 0, 0, 16, 0,}, // 122: 2.883262
+{ 5, 0, 11, 0,}, // 123: 3.016212
+{ 8, 0, 8, 0,}, // 124: 2.418097
+{ 11, 0, 5, 0,}, // 125: 1.931664
+{ 13, 0, 3, 0,}, // 126: 1.434527
+{ 16, 0, 0, 0,}, // 127: 1.079862
+{ 0, 0, 7, 9,}, // 128: 4.154392
+{ 0, 0, 8, 8,}, // 129: 4.105173
+{ 0, 0, 9, 7,}, // 130: 4.366721
+{ 0, 0, 10, 6,}, // 131: 4.714817
+{ 0, 0, 11, 5,}, // 132: 5.121023
+{ 0, 0, 11, 5,}, // 133: 5.244284
+{ 0, 0, 12, 4,}, // 134: 4.952907
+{ 0, 4, 9, 3,}, // 135: 5.310151
+{ 0, 0, 13, 3,}, // 136: 5.506182
+{ 0, 4, 10, 2,}, // 137: 5.181949
+{ 0, 7, 9, 0,}, // 138: 4.343816
+{ 0, 6, 10, 0,}, // 139: 2.415480
+{ 0, 5, 11, 0,}, // 140: 1.340145
+{ 0, 4, 12, 0,}, // 141: 1.577034
+{ 4, 4, 8, 0,}, // 142: 1.969682
+{ 5, 4, 7, 0,}, // 143: 1.937322
+{ 0, 0, 11, 5,}, // 144: 5.262824
+{ 0, 0, 12, 4,}, // 145: 5.592458
+{ 0, 5, 9, 2,}, // 146: 5.467087
+{ 0, 8, 8, 0,}, // 147: 3.997732
+{ 0, 5, 11, 0,}, // 148: 0.952665
+{ 3, 5, 8, 0,}, // 149: 1.706804
+{ 6, 4, 6, 0,}, // 150: 1.678052
+{ 8, 3, 5, 0,}, // 151: 1.846558
+{ 0, 0, 12, 4,}, // 152: 5.615221
+{ 0, 0, 14, 2,}, // 153: 5.153351
+{ 0, 0, 16, 0,}, // 154: 4.749968
+{ 0, 0, 16, 0,}, // 155: 2.505809
+{ 0, 0, 16, 0,}, // 156: 0.000000
+{ 3, 0, 13, 0,}, // 157: 1.296586
+{ 5, 0, 11, 0,}, // 158: 1.254987
+{ 7, 0, 9, 0,}, // 159: 1.245686
+{ 0, 0, 0, 16,}, // 160: 10.746456
+{ 0, 0, 0, 16,}, // 161: 8.065981
+{ 0, 5, 0, 11,}, // 162: 8.528467
+{ 0, 9, 0, 7,}, // 163: 7.230309
+{ 0, 12, 0, 4,}, // 164: 6.116160
+{ 0, 14, 0, 2,}, // 165: 4.923770
+{ 0, 16, 0, 0,}, // 166: 0.000000
+{ 5, 11, 0, 0,}, // 167: 2.242939
+{ 0, 0, 0, 16,}, // 168: 14.476759
+{ 0, 0, 0, 16,}, // 169: 3.505981
+{ 0, 2, 0, 14,}, // 170: 6.772447
+{ 0, 5, 0, 11,}, // 171: 9.576896
+{ 0, 7, 0, 9,}, // 172: 12.518097
+{ 0, 9, 0, 7,}, // 173: 14.728203
+{ 0, 11, 0, 5,}, // 174: 16.920847
+{ 0, 16, 0, 0,}, // 175: 18.232542
+{ 0, 16, 0, 0,}, // 176: 18.019087
+{ 0, 16, 0, 0,}, // 177: 15.178550
+{ 0, 16, 0, 0,}, // 178: 13.160194
+{ 0, 16, 0, 0,}, // 179: 11.254657
+{ 0, 16, 0, 0,}, // 180: 9.486621
+{ 0, 16, 0, 0,}, // 181: 7.896854
+{ 0, 16, 0, 0,}, // 182: 6.553573
+{ 0, 16, 0, 0,}, // 183: 5.563946
+{ 0, 16, 0, 0,}, // 184: 5.058115
+{ 4, 12, 0, 0,}, // 185: 5.219287
+{ 5, 11, 0, 0,}, // 186: 4.635747
+{ 7, 9, 0, 0,}, // 187: 4.094779
+{ 8, 8, 0, 0,}, // 188: 3.628493
+{ 10, 6, 0, 0,}, // 189: 3.176202
+{ 11, 5, 0, 0,}, // 190: 2.760862
+{ 12, 4, 0, 0,}, // 191: 2.401772
+{ 0, 0, 0, 16,}, // 192: 9.251770
+{ 0, 0, 0, 16,}, // 193: 13.106921
+{ 0, 0, 6, 10,}, // 194: 14.527426
+{ 0, 0, 9, 7,}, // 195: 15.690427
+{ 0, 0, 12, 4,}, // 196: 16.970579
+{ 0, 0, 16, 0,}, // 197: 15.618019
+{ 0, 0, 16, 0,}, // 198: 15.476497
+{ 0, 0, 16, 0,}, // 199: 16.400719
+{ 0, 0, 16, 0,}, // 200: 17.100441
+{ 16, 0, 0, 0,}, // 201: 14.495218
+{ 16, 0, 0, 0,}, // 202: 12.122077
+{ 16, 0, 0, 0,}, // 203: 9.911701
+{ 16, 0, 0, 0,}, // 204: 7.872527
+{ 16, 0, 0, 0,}, // 205: 6.014748
+{ 16, 0, 0, 0,}, // 206: 4.351084
+{ 16, 0, 0, 0,}, // 207: 2.898067
+{ 0, 0, 0, 16,}, // 208: 14.476759
+{ 0, 0, 0, 16,}, // 209: 6.868338
+{ 0, 0, 0, 16,}, // 210: 0.000000
+{ 0, 0, 0, 16,}, // 211: 5.525746
+{ 0, 4, 0, 12,}, // 212: 8.807407
+{ 0, 5, 0, 11,}, // 213: 10.780784
+{ 0, 7, 0, 9,}, // 214: 12.732467
+{ 0, 8, 0, 8,}, // 215: 14.181246
+{ 0, 9, 0, 7,}, // 216: 13.294175
+{ 0, 10, 0, 6,}, // 217: 12.536940
+{ 0, 11, 0, 5,}, // 218: 11.436922
+{ 0, 12, 0, 4,}, // 219: 10.930580
+{ 0, 13, 0, 3,}, // 220: 9.967556
+{ 0, 13, 0, 3,}, // 221: 9.411467
+{ 0, 16, 0, 0,}, // 222: 7.069834
+{ 0, 16, 0, 0,}, // 223: 5.629796
+{ 0, 0, 0, 16,}, // 224: 14.476759
+{ 0, 0, 0, 16,}, // 225: 11.971094
+{ 0, 0, 0, 16,}, // 226: 10.730701
+{ 0, 0, 0, 16,}, // 227: 10.452529
+{ 0, 0, 0, 16,}, // 228: 10.884886
+{ 0, 0, 0, 16,}, // 229: 11.651694
+{ 0, 0, 0, 16,}, // 230: 12.406713
+{ 0, 0, 0, 16,}, // 231: 12.814651
+{ 0, 16, 0, 0,}, // 232: 4.273082
+{ 0, 16, 0, 0,}, // 233: 3.051739
+{ 0, 16, 0, 0,}, // 234: 2.296259
+{ 0, 16, 0, 0,}, // 235: 3.496503
+{ 6, 4, 6, 0,}, // 236: 1.800300
+{ 9, 4, 3, 0,}, // 237: 1.978669
+{ 12, 4, 0, 0,}, // 238: 1.792487
+{ 13, 3, 0, 0,}, // 239: 1.455034
+{ 16, 0, 0, 0,}, // 240: 2.898067
+{ 16, 0, 0, 0,}, // 241: 2.257339
+{ 16, 0, 0, 0,}, // 242: 1.678598
+{ 16, 0, 0, 0,}, // 243: 1.166648
+{ 16, 0, 0, 0,}, // 244: 0.727934
+{ 16, 0, 0, 0,}, // 245: 0.371833
+{ 16, 0, 0, 0,}, // 246: 0.114238
+{ 16, 0, 0, 0,}, // 247: 0.000000
+{ 0, 6, 0, 10,}, // 248: 11.794470
+{ 0, 0, 0, 16,}, // 249: 8.021592
+{ 0, 6, 0, 10,}, // 250: 15.643616
+{ 0, 10, 0, 6,}, // 251: 21.457966
+{ 0, 16, 0, 0,}, // 252: 14.944967
+{ 0, 16, 0, 0,}, // 253: 8.013844
+{ 7, 9, 0, 0,}, // 254: 5.483591
+{ 0, 12, 0, 4,}, // 255: 5.592070
+};
 
 // C2P table for full resolution
 // [phase 0..3][color 0..255][pixel 0..7]
@@ -302,22 +567,33 @@ static unsigned short stcolor(unsigned char r, unsigned char g, unsigned char b)
 
 void install_palette(const unsigned short *palette) {
     volatile unsigned short *reg = (unsigned short*) 0xff8240;
-#if USE_MIDRES
-    short numColors = 4;
-#else
-    short numColors = 16;
-#endif
-    for (short n=0; n<numColors; n++) *reg++ = *palette++;
+    for (short n=0; n<16; n++) *reg++ = *palette++;
 }
 
 void save_palette(unsigned short *palette) {
     volatile unsigned short *reg = (unsigned short*) 0xff8240;
-#if USE_MIDRES
-    short numColors = 4;
-#else
-    short numColors = 16;
-#endif
-    for (short n=0; n<numColors; n++) *palette++ = *reg++;
+    for (short n=0; n<16; n++) *palette++ = *reg++;
+}
+
+// Find the ST palette color index to fill a pixel with according to given weights.
+short bayer4_color(const unsigned char *weights, short numcolors, short phase, short px) {
+    static unsigned char bayer[4][4] = {
+        {0,  8, 2,10},
+        {12, 4,14, 6},
+        { 3,11, 1, 9},
+        {15, 7,13, 5}
+    };
+
+    unsigned char bayer_lwb = 0, bayer_upb = 0;
+    short c;
+    for (c=0; c<numcolors; c++) {
+        bayer_upb += weights[c];
+        if (bayer[phase][px%4] >= bayer_lwb && bayer[phase][px%4] < bayer_upb) {
+            return c; // Search for color is finished.
+        }
+        bayer_lwb += weights[c];
+    }
+    return -1;
 }
 
 
@@ -326,23 +602,8 @@ void save_palette(unsigned short *palette) {
 /// @param phase The vertical phase within the bayer pattern (0..3).
 /// @param px The pixel within the group of 8 pixels covered by a movep-DWORD (0..7).
 /// @return A DWORD that can be written into an Atari ST lo-res framebuffer using movep.l.
-unsigned long bayer4_pdata(const unsigned char *weights, short phase, short px) {
-	unsigned char bayer[4][4] = {
-		{0,  8, 2,10},
-		{12, 4,14, 6},
-		{ 3,11, 1, 9},
-		{15, 7,13, 5}
-	};
-    // Find the ST palette color index to fill the pixel with.
-    unsigned char bayer_lwb = 0, bayer_upb = 0;
-    short c;
-    for (c=0; c<16; c++) {
-        bayer_upb += weights[c];
-        if (bayer[phase][px%4] >= bayer_lwb && bayer[phase][px%4] < bayer_upb) {
-            break; // Search for color is finished.
-        }
-        bayer_lwb += weights[c];
-    }
+unsigned long bayer4_lorez_pdata(const unsigned char *weights, short phase, short px) {
+    short c = bayer4_color(weights, 16, phase, px);
     // Compute a pdata-compatible pixel representation.
     unsigned long pdata = 0;
     if (c & 1) pdata |= 0x01000000;
@@ -352,102 +613,117 @@ unsigned long bayer4_pdata(const unsigned char *weights, short phase, short px) 
     return pdata << (7-px);
 }
 
-void init_c2p_table() {
-    set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
-#if USE_MIDRES
-	unsigned short bayer[4][4] = {
-		{0,  8, 2,10},
-		{12, 4,14, 6},
-		{ 3,11, 1, 9},
-		{15, 7,13, 5}
-	};
-    unsigned short stpalette[] = {stcolor(0,0,0), stcolor(85,85,85), stcolor(170,170,170), stcolor(255,255,255)};
-    install_palette(stpalette);
-
-    unsigned char* palette = W_CacheLumpName("PLAYPAL", PU_CACHE);
-    for (int i=0; i<256; i++) {
-        unsigned short r=palette[3*i], g=palette[3*i+1], b=palette[3*i+2];
-        // printf("C %d: %d %d %d\n", i, r, g, b);
-        // calculate brightness (0..765)
-        unsigned short l = r+g+b;
-        // calculate weights (0..255) of color indices 0, 1, 2, 3
-        unsigned short w[] = {
-            l < 256 ? 255 - l : 0,
-            l < 256 ? l : (l < 512 ? 511 - l : 0),
-            l < 256 ? 0 : (l < 512 ? l - 256 : 767 - l),
-            l < 512 ? 0 : (l - 512),
-        };
-        // make weights cumulative
-        for (int j=0; j<3; j++) w[j+1] += w[j];
-        // renormalize weights into bayer range 0..15
-        // for (int j=0; j<4; j++) w[j] >>= 4;
-        // printf("  w: %2d %2d %2d %2d\n", w[0], w[1], w[2], w[3]);
-
-        for (int phase=0; phase<4; phase++) {
-            // iterate over 8 consecutive input pixels
-            unsigned long combined_pdata = 0;
-            for (int px = 0; px < 8; px++) {
-                unsigned long pdata = 0;
-                // per input pixel, iterate over two output pixels
-                for (int opx = 2*px; opx < 2*px+2; opx++) {
-                    // Fetch bayer threshold for output pixel.
-                    unsigned short bayer_w = (bayer[phase][opx % 4] << 4) + 7;
-                    // Iterate four possible output colors.
-                    // Select first one that has cumulative weight >= bayer threshold.
-                    // Apply bits to pixel data in opx position.
-                    for (int oc = 0; oc < 4; oc++) {
-                        if (oc < 3 && w[oc] < bayer_w) continue;
-                        if (oc & 1) pdata |= 0x80000000 >> opx;
-                        if (oc & 2) pdata |= 0x00008000 >> opx;
-                        break;
-                    }
-                }
-                c2p_table[phase][i][px] = pdata;
-                combined_pdata |= pdata;
-            }
-        }
-    }
-#else
-	for (int i=0; i<256; i++) {
-        unsigned char *weights = mix_weights[i];
-        for (int phase=0; phase<4; phase++) {
-            // Fill 1x1 c2p table
-            for (int px=0; px<8; px++) {
-                c2p_table[phase][i][px] = bayer4_pdata(weights, phase, px);
-            }
-            // Fill 2x2 c2p table
-            for (int ipx=0; ipx<4; ipx++) {
-                unsigned long ipx_pdata = 0;
-                for (int opx=2*ipx; opx<2*ipx+2; opx++) {
-                    ipx_pdata |= bayer4_pdata(weights, phase, opx);
-                }
-                c2p_2x_table[phase][i][ipx] = ipx_pdata;
-            }
-            // Fill 4x4 c2p table
-            for (int ipx=0; ipx<2; ipx++) {
-                unsigned long ipx_pdata = 0;
-                for (int opx=4*ipx; opx<4*ipx+4; opx++) {
-                    ipx_pdata |= bayer4_pdata(weights, phase, opx);
-                }
-                c2p_4x_table[phase][i][ipx] = ipx_pdata;
-            }
-        }
-	}
-#endif
+/// @brief Computes a longword containing Bayer-dithered pixel given a set of mixing weights.
+/// @param weights An array of mixing weights, each weight corresponding to a palette color. Must sum up to 16.
+/// @param phase The vertical phase within the bayer pattern (0..3).
+/// @param px The pixel within the group of 16 pixels covered by a longword in midrez (0..15).
+/// @return A DWORD that can be written into an Atari ST mid-res framebuffer.
+unsigned long bayer4_midrez_pdata(const unsigned char *weights, short phase, short px) {
+    short c = bayer4_color(weights, 4, phase, px);
+    // Compute a midrez-compatible pixel representation.
+    unsigned long data = 0;
+    if (c & 1) data |= 0x00010000;
+    if (c & 2) data |= 0x00000001;
+    return data << (15-px);
 }
 
-static void c2p(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]) {
-#if USE_MIDRES
-	while (pixels > 7) {
-		register unsigned long pdata = 0;
-        for(int i=0; i<8; i++) {
-            pdata |= table[*in++][i];
+static void c2p_1x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
+static void c2p_1x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
+static void c2p_screen_lorez(unsigned char *out, const unsigned char *in);
+static void c2p_screen_midrez(unsigned char *out, const unsigned char *in);
+
+static void c2p_statusbar_lorez(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
+    for (int line = y_begin; line < y_end; line++ ) {
+        c2p_1x_lorez(out, in, x_end - x_begin, c2p_table[line&3]);
+        out += 160;
+        in += 320;
+    }
+}
+
+static void c2p_statusbar_midrez(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
+    for (int line = y_begin; line < y_end; line++ ) {
+        c2p_1x_midrez(out, in, x_end - x_begin, c2p_table[line&3]);
+        out += 160;
+        in += 320;
+    }
+}
+
+void init_c2p_table() {
+    short res = Getrez();
+    if (res == 0) {
+        // Low Resolution, 16 colors
+        subset = subset_lorez;
+        num_colors = 16;
+        c2p_screen_drawfunc = c2p_screen_lorez;
+        c2p_statusbar_drawfunc = c2p_statusbar_lorez;
+        set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+        for (int i=0; i<256; i++) {
+            unsigned char *weights = mix_weights_lorez[i];
+            for (int phase=0; phase<4; phase++) {
+                // Fill 1x1 c2p table
+                for (int px=0; px<8; px++) {
+                    c2p_table[phase][i][px] = bayer4_lorez_pdata(weights, phase, px);
+                }
+                // Fill 2x2 c2p table
+                for (int ipx=0; ipx<4; ipx++) {
+                    unsigned long ipx_pdata = 0;
+                    for (int opx=2*ipx; opx<2*ipx+2; opx++) {
+                        ipx_pdata |= bayer4_lorez_pdata(weights, phase, opx);
+                    }
+                    c2p_2x_table[phase][i][ipx] = ipx_pdata;
+                }
+                // Fill 4x4 c2p table
+                for (int ipx=0; ipx<2; ipx++) {
+                    unsigned long ipx_pdata = 0;
+                    for (int opx=4*ipx; opx<4*ipx+4; opx++) {
+                        ipx_pdata |= bayer4_lorez_pdata(weights, phase, opx);
+                    }
+                    c2p_4x_table[phase][i][ipx] = ipx_pdata;
+                }
+            }
         }
-        *(unsigned long*)out = pdata;
-		pixels -= 8;
-		out += 4;
-	}
-#else
+    } else if (res == 1) {
+        // Medium resolution, 4 colors
+        subset = subset_midrez;
+        num_colors = 4;
+        c2p_screen_drawfunc = c2p_screen_midrez;
+        c2p_statusbar_drawfunc = c2p_statusbar_midrez;
+        set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+        for (int i=0; i<256; i++) {
+            unsigned char *weights = mix_weights_midrez[i];
+            for (int phase=0; phase<4; phase++) {
+                // Fill 1x1 c2p table
+                for (int ipx=0; ipx<8; ipx++) {
+                    unsigned long ipx_pdata = 0;
+                    for (int opx=2*ipx; opx<2*ipx+2; opx++) {
+                        ipx_pdata |= bayer4_midrez_pdata(weights, phase, opx);
+                    }
+                    c2p_table[phase][i][ipx] = ipx_pdata;
+                }
+                // Fill 2x2 c2p table
+                for (int ipx=0; ipx<4; ipx++) {
+                    unsigned long ipx_pdata = 0;
+                    for (int opx=4*ipx; opx<4*ipx+4; opx++) {
+                        ipx_pdata |= bayer4_midrez_pdata(weights, phase, opx);
+                    }
+                    c2p_2x_table[phase][i][ipx] = ipx_pdata;
+                }
+                // Fill 4x4 c2p table
+                for (int ipx=0; ipx<2; ipx++) {
+                    unsigned long ipx_pdata = 0;
+                    for (int opx=8*ipx; opx<8*ipx+8; opx++) {
+                        ipx_pdata |= bayer4_midrez_pdata(weights, phase, opx);
+                    }
+                    c2p_4x_table[phase][i][ipx] = ipx_pdata;
+                }
+            }
+        }
+    } else {
+        I_Error("Unsupported resolution %d\n", res);
+    }
+}
+
+static void c2p_1x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]) {
     if (pixels < 16) return;
     unsigned short groups = pixels / 16 - 1;
     unsigned long pdata = 0; // 32 bits of planar pixel data
@@ -577,11 +853,24 @@ static void c2p(register unsigned char *out, const unsigned char *in, unsigned s
         // Clobbers
         : "d0", "d1", "d2", "memory"
     );
-#endif
 }
 
-#if !USE_MIDRES
-static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][4]) {
+static void c2p_1x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]) {
+    if (pixels < 8) return;
+    pixels -= pixels % 8; 
+    while (pixels != 0) {
+		register unsigned long pdata = 0;
+        for(int i=0; i<8; i++) {
+            pdata |= table[*in++][i];
+        }
+        *(unsigned long*)out = pdata;
+		pixels -= 8;
+		out += 4;
+	}
+}
+
+
+static void c2p_2x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][4]) {
     if (pixels < 8) return;
     short groups = pixels / 8 - 1;
     unsigned long pdata = 0; // 32 bits of planar pixel data
@@ -664,7 +953,88 @@ static void c2p_2x(register unsigned char *out, const unsigned char *in, unsigne
     );
 }
 
-static void c2p_4x(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][2]) {
+static void c2p_2x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][4]) {
+    if (pixels < 8) return;
+    short groups = pixels / 8 - 1;
+    unsigned long pdata = 0; // 32 bits of planar pixel data
+    unsigned long mask = 0x00ff00ff<<4; // Mask for isolating table indices (after shifting)
+    asm volatile (
+        // Beginning of dbra loop
+        "0:                                         \n\t"
+
+        // Read eight consecutive pixels from buffer into two 32 bit registers
+        "movem.l    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Prepare pixels 1, 3
+        "move.l     %%d0,%%d2                       \n\t"
+        "lsl.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 3
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 1
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Prepare pixels 0, 2
+        "lsr.l      #4,%%d0                         \n\t"
+        "and.l      %[mask],%%d0                    \n\t"
+
+        // Pixel 2
+        "or.l       8(%[table],%%d0.w), %[pdata]    \n\t"
+
+        // Pixel 0
+        "swap       %%d0                            \n\t"
+        "or.l       (%[table],%%d0.w), %[pdata]     \n\t"
+
+        // Write these pixels into ST screen buffer
+        "move.l    %[pdata], (%[out])+              \n\t"
+
+        // Prepare pixels 5,7
+        "move.l     %%d1,%%d2                       \n\t"
+        "lsl.l      #4,%%d2                         \n\t"
+        "and.l      %[mask],%%d2                    \n\t"
+
+        // Pixel 7
+        "move.l     12(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Pixel 5
+        "swap       %%d2                            \n\t"
+        "or.l       4(%[table],%%d2.w), %[pdata]   \n\t"
+
+        // Prepare pixels 4, 6
+        "lsr.l      #4,%%d1                         \n\t"
+        "and.l      %[mask],%%d1                    \n\t"
+
+        // Pixel 6
+        "or.l       8(%[table],%%d1.w), %[pdata]   \n\t"
+
+        // Pixel 4
+        "swap       %%d1                            \n\t"
+        "or.l       (%[table],%%d1.w), %[pdata]     \n\t"
+
+        // Write these pixels into ST screen buffer
+        "move.l     %[pdata], (%[out])+             \n\t"
+
+        "dbra.w     %[groups],0b                    \n\t"
+
+        // Outputs
+        : [out] "+a" (out)
+        , [in] "+a" (in)
+        , [pdata] "+d" (pdata)
+        , [groups] "+d" (groups)
+        
+        // Inputs
+        : [table] "a" (table)
+        , [mask] "d" (mask)
+        
+        // Clobbers
+        : "d0", "d1", "d2", "memory"
+    );
+}
+
+static void c2p_4x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][2]) {
     if (pixels < 4) return;
     short groups = pixels / 4 - 1;
     unsigned long pdata = 0; // 32 bits of planar pixel data
@@ -722,22 +1092,75 @@ static void c2p_4x(register unsigned char *out, const unsigned char *in, unsigne
         : "d0", "d1", "d2", "memory"
     );
 }
-#endif
+
+static void c2p_4x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][2]) {
+    if (pixels < 4) return;
+    short groups = pixels / 4 - 1;
+    unsigned long pdata = 0; // 32 bits of planar pixel data
+    unsigned short mask = 0x00ff<<3; // Mask for isolating table indices (after shifting)
+    asm volatile (
+        // Beginning of dbra loop
+        "0:                                         \n\t"
+
+        // Read four consecutive pixels from buffer into two 16 bit registers
+        "movem.w    (%[in])+, %%d0-%%d1             \n\t"
+
+        // Pixel 0
+        "move.w     %%d0,%%d2                       \n\t"
+        "lsr.w      #5,%%d2                         \n\t"
+        "and.w      %[mask],%%d2                    \n\t"
+        "move.l     (%[table],%%d2.w), %[pdata]     \n\t"
+
+        // Pixel 1
+        "lsl.w      #3,%%d0                         \n\t"
+        "and.w      %[mask],%%d0                    \n\t"
+        "or.l       4(%[table],%%d0.w), %[pdata]    \n\t"
+
+        // Write these pixels into ST screen buffer
+        "move.l     %[pdata], (%[out])+             \n\t"
+
+        // Pixel 2
+        "move.w     %%d1,%%d2                       \n\t"
+        "lsr.w      #5,%%d2                         \n\t"
+        "and.w      %[mask],%%d2                    \n\t"
+        "move.l     0(%[table],%%d2.w), %[pdata]    \n\t"
+
+        // Pixel 3
+        "lsl.w      #3,%%d1                         \n\t"
+        "and.w      %[mask],%%d1                    \n\t"
+        "or.l       4(%[table],%%d1.w), %[pdata]    \n\t"
+
+        // Write these pixels into ST screen buffer
+        "move.l     %[pdata], (%[out])+             \n\t"
+
+        "dbra.w     %[groups],0b                    \n\t"
+
+        // Outputs
+        : [out] "+a" (out)
+        , [in] "+a" (in)
+        , [pdata] "+d" (pdata)
+        , [groups] "+d" (groups)
+        
+        // Inputs
+        : [table] "a" (table)
+        , [mask] "d" (mask)
+        
+        // Clobbers
+        : "d0", "d1", "d2", "memory"
+    );
+}
 
 void set_doom_palette(const unsigned char *colors) {
-#if USE_MIDRES
-    // do nothing
-#else
-    unsigned short stpalette[sizeof(subset)];
-    for (int i=0; i<sizeof(subset); i++) {
+    unsigned short stpalette[16];
+    for (int i=0; i<16; i++) {
         const unsigned char *c = &colors[3*subset[i]];
         stpalette[i] = stcolor(c[0], c[1], c[2]);
     }
     install_palette(stpalette);
-#endif
 }
 
 void draw_palette_table(unsigned char *st_screen) {
+    short res = Getrez();
     unsigned char buf[128+16];
 	unsigned char c = 0;
 	for (int y=0; y<128; y+=8) {
@@ -753,7 +1176,11 @@ void draw_palette_table(unsigned char *st_screen) {
 		}
         for (int x=128; x<128+8; x++) buf[x] = 0;
         for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
-		for (int i=0; i<8; i++) c2p(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
+        if (res == 0) {
+		    for (int i=0; i<8; i++) c2p_1x_lorez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
+        } else if (res == 1) {
+		    for (int i=0; i<8; i++) c2p_1x_midrez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
+        }
 	}
 }
 
@@ -762,36 +1189,60 @@ extern boolean menuactive;
 extern boolean automapactive;
 extern gamestate_t gamestate;
 
-void c2p_screen(unsigned char *out, const unsigned char *in) {
-#if USE_MIDRES
-    for (int line = 0; line < SCREENHEIGHT; line++ ) {
-	    c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
-    }
-#else
+static void c2p_screen_lorez(unsigned char *out, const unsigned char *in) {
     boolean zoom_allowed = gamestate == GS_LEVEL
         && !menuactive && !inhelpscreens && !automapactive;
     short splitline = !zoom_allowed || viewheight == SCREENHEIGHT ? SCREENHEIGHT : SCREENHEIGHT - 32;
     if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
         for (short line = 0; line < splitline; line++ ) {
-            c2p(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+            c2p_1x_lorez(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
         }
     } else if(viewwidth > SCREENWIDTH/4) {
         // 2x zoom
         for (short line = 0; line < splitline; line++ ) {
-            c2p_2x(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
+            c2p_2x_lorez(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
         }
     } else {
         // 4x zoom
         for (short line = 0; line < splitline; line++ ) {
             short phase = line & 3;
             if (phase < 2) {
-                c2p_4x(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
+                c2p_4x_lorez(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
             } else if (phase == 2) {
                 memcpy(out + 160*line, out + 160*line - 320, 320);
             }
         }
     }
-#endif
+}
+
+static void c2p_screen_midrez(unsigned char *out, const unsigned char *in) {
+    boolean zoom_allowed = gamestate == GS_LEVEL
+        && !menuactive && !inhelpscreens && !automapactive;
+    short splitline = !zoom_allowed || viewheight == SCREENHEIGHT ? SCREENHEIGHT : SCREENHEIGHT - 32;
+    if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
+        for (short line = 0; line < splitline; line++ ) {
+            c2p_1x_midrez(out + 160*line, in + 320*line, 320, c2p_table[line&3]);
+        }
+    } else if(viewwidth > SCREENWIDTH/4) {
+        // 2x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            c2p_2x_midrez(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&3]);
+        }
+    } else {
+        // 4x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            short phase = line & 3;
+            if (phase < 2) {
+                c2p_4x_midrez(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
+            } else if (phase == 2) {
+                memcpy(out + 160*line, out + 160*line - 320, 320);
+            }
+        }
+    }
+}
+
+void c2p_screen(unsigned char *out, const unsigned char *in) {
+    c2p_screen_drawfunc(out, in);
 }
 
 void c2p_statusbar(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
@@ -816,9 +1267,5 @@ void c2p_statusbar(unsigned char *out, const unsigned char *in, short y_begin, s
     in += y_begin * 320 + x_begin;
     //fprintf(stderr, "%d %d %d %d \r", y_begin, y_end, x_begin, x_end);
 
-    for (int line = y_begin; line < y_end; line++ ) {
-        c2p(out, in, x_end - x_begin, c2p_table[line&3]);
-        out += 160;
-        in += 320;
-    }
+    c2p_statusbar_drawfunc(out, in, y_begin, y_end, x_begin, x_end);
 }

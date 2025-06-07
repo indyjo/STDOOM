@@ -8,7 +8,8 @@ extern unsigned char PLAYPAL[];
 float colors[768];
 
 //unsigned char subset[] = {0,      93, 241, 202, 253, 250, 38, 222, 216, 140, 131, 158, 116,     58, 249, 4};
-unsigned char subset[] =   {0, 90, 101, 241, 202,    252,   38,    219,   144, 136, 158, 120, 72, 58, 249, 4};
+//unsigned char subset[] =   {0, 90, 101, 241, 202,    252,   38,    219,   144, 136, 158, 120, 72, 58, 249, 4};
+unsigned char subset[] =   {0, 166, 156, 210};
 
 typedef float vec3[3];
 
@@ -76,7 +77,10 @@ float find_best_dist(int weight_left, vec3 delta, const float *target, float acc
 	return best_dist;
 }
 
+// Do not try to mix more colors than this
 #define MAX_COLORS 4
+// 16 is the right number for a 4x4 Bayer matrix
+#define MAX_WEIGHT 16
 
 int main(int argc, const char** argv) {
 	// Apply gamma to emphasize the darker parts
@@ -103,8 +107,8 @@ int main(int argc, const char** argv) {
 		fflush(stdout);
 		vec3 delta;
 		const float *color = &colors[3*target];
-		for (int c=0; c<3; c++) delta[c]=color[c] * sizeof(subset);
-		float residual = find_best_dist(sizeof(subset), delta, color, 0.0f, 0, MAX_COLORS, 1);
+		for (int c=0; c<3; c++) delta[c]=color[c] * MAX_WEIGHT;
+		float residual = find_best_dist(MAX_WEIGHT, delta, color, 0.0f, 0, MAX_COLORS, 1);
 		printf("}, // %d: %f\n", target, residual);
 	}
 	return 0;
