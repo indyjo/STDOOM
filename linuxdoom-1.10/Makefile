@@ -6,9 +6,9 @@
 #
 #CC=  gcc  # gcc or g++
 
-CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall
+CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall -msoft-float
 CFLAGS20=$(CFLAGS) -m68020
-LDFLAGS=-L/usr/X11R6/lib -mfastcall
+LDFLAGS=-L/usr/X11R6/lib -mfastcall -msoft-float
 LDLIBS=-lm
 
 # subdirectory for objects
