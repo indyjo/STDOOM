@@ -79,7 +79,18 @@ byte* I_ZoneBase (int*	size)
     *size = ram_used;
     unsigned long memavail = Malloc(-1);
     printf("Memory available: %ld\n", memavail);
-    return (byte *) malloc (*size);
+    printf("Trying to allocate %d bytes\n", *size);
+    unsigned long addr = (unsigned long) malloc (*size);
+    if (!addr) {
+        I_Error("Not enough memory available");
+    } else if (addr >= (1L<<24)) {
+        printf("Fast RAM allocated at %08lx\n", addr);
+    } else if (addr >= (1L<<22)) {
+        printf("Alt-RAM allocated at %06lx\n", addr);
+    } else {
+        printf("ST-RAM allocated at %06lx\n", addr);
+    }
+    return (byte*)addr;
 }
 
 

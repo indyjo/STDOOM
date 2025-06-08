@@ -24,6 +24,7 @@
 static const char
 rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
+#include <mint/osbind.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -141,12 +142,12 @@ int 		lengths[NUMSFX];
 //           - playbuffer points to the one that has most recently been sent to DMA sound
 //           - lastbuffer points to the one that was playing before the current playbuffer, but which
 //             might still be being finished by the DMA sound
-signed char sndbuffers[4*MIXBUFFERSIZE];
+signed char *sndbuffers = NULL;
+signed char *mixbuffer, *playbuffer, *lastbuffer;
 #define zerobuffer (sndbuffers)
 #define sndbuffer1 (sndbuffers + 1*MIXBUFFERSIZE)
 #define sndbuffer2 (sndbuffers + 2*MIXBUFFERSIZE)
 #define sndbuffer3 (sndbuffers + 3*MIXBUFFERSIZE)
-signed char	*mixbuffer = sndbuffer1, *playbuffer = sndbuffer2, *lastbuffer = sndbuffer3;
 
 
 // The channel step amount...
@@ -535,14 +536,14 @@ int I_SoundIsPlaying(int handle)
 __attribute_noinline__ boolean I_ShouldSubmitSound() {
   unsigned long addr = *pDmaSndAdrLo | (*pDmaSndAdrMi << 8) | (*pDmaSndAdrHi << 16);
   // Sometimes we'll see a runaway DMA sound chip. Stop it in its tracks!
-  if (addr < sndbuffers || addr > sndbuffers + sizeof(sndbuffers)) {
+  if ((signed char*)addr < sndbuffers || (signed char *)addr > sndbuffers + sizeof(sndbuffers)) {
         *pDmaSndCtrl &= ~DMASND_CTRL_ON;
         return 1;
   }
   boolean on = *pDmaSndCtrl & DMASND_CTRL_ON;
   // Assumption: if the most recently submitted buffer is not playing yet,
   // we can safely wait for the next VBL interrupt.
-  boolean result = !on || addr == 0 || (addr >= playbuffer && addr <= playbuffer + MIXBUFFERSIZE);
+  boolean result = !on || addr == 0 || ((signed char *)addr >= playbuffer && (signed char *)addr <= playbuffer + MIXBUFFERSIZE);
   return result;
 }
 
@@ -764,6 +765,8 @@ void I_ShutdownSound(void)
 #endif
   
   *pDmaSndCtrl = DMASND_CTRL_OFF;
+  if (sndbuffers) Mfree(sndbuffers);
+
 #endif
 
   // Done.
@@ -801,6 +804,30 @@ I_InitSound()
   int i;
   
 #ifdef SNDINTR
+  if (!nosfx) {
+    // We need the DMA sound buffers to be in ST memory, hence use Mxalloc when we can.
+    // The docs claim that Mxalloc needs GEMDOS version >= 0.19, so check for that and fall back
+    // to Malloc otherwise.
+    short gemdos = Sversion();
+    unsigned char major = gemdos & 0xff, minor = (gemdos >> 8) & 0xff;
+    boolean mxalloc_supported = major > 0 || minor >= 0x19;
+    fprintf(stderr, "I_InitSound: GEMDOS %02x.%02x (Mxalloc: %d)\n", major, minor, mxalloc_supported);
+    long addr;
+    if (mxalloc_supported) {
+      addr = Mxalloc(4*MIXBUFFERSIZE, 0);
+    } else {
+      addr = Malloc(4*MIXBUFFERSIZE);
+    }
+    if (addr <= 0) {
+      I_Error("I_InitSound: failed to allocate DMA sound mixbuffer");
+    }
+    sndbuffers = (signed char *)addr;
+
+    for (short i=0; i<MIXBUFFERSIZE; i++) zerobuffer[i] = 0;
+    mixbuffer = sndbuffer1;
+    playbuffer = sndbuffer2;
+    lastbuffer = sndbuffer3;
+  }
   if (nosfx && nomusic) {
     fprintf( stderr, "I_InitSound: skipping VBLANK interrupt\n" );
   } else {

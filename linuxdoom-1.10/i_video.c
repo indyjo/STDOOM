@@ -39,14 +39,16 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 #include "doomdef.h"
 
 byte		*st_screen;
-static void *old_interrupt_handler;
+static void *old_interrupt_handler=NULL;
 static unsigned short old_palette[16];
 
 
 void I_ShutdownGraphics(void)
 {
-    *(void **)0x118 = old_interrupt_handler;
-    install_palette(old_palette);
+    if (old_interrupt_handler) {
+        *(void **)0x118 = old_interrupt_handler;
+        install_palette(old_palette);
+    }
 }
 
 
