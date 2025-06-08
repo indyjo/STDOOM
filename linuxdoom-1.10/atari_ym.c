@@ -628,11 +628,15 @@ void ymmusic_update()
             {
                 // Note just pressed? Enable mixer for channel.
                 *pPsgSndCtrl = 7;
+                // Enable voice
+                unsigned char data = *pPsgSndCtrl & ~(1 << voice->ymidx);
+                // Enable or disable noise
                 if (voice->instrument && voice->instrument->enables_noise) {
-                    *pPsgSndData = *pPsgSndCtrl & ~(9 << (voice->ymidx));
+                    data &=  ~(8 << voice->ymidx);
                 } else {
-                    *pPsgSndData = *pPsgSndCtrl & ~(1 << voice->ymidx);
+                    data |= 8 << voice->ymidx;
                 }
+                *pPsgSndData = data;
             } 
 
             voice->ticks++;
