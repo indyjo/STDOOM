@@ -207,12 +207,12 @@ void R_RenderSegLoop (void)
 {
     angle_t		angle;
     unsigned		index;
-    int			yl;
-    int			yh;
-    int			mid;
+    short		yl;
+    short		yh;
+    short		mid;
     fixed_t		texturecolumn;
-    int			top;
-    int			bottom;
+    short		top;
+    short		bottom;
 
     //texturecolumn = 0;				// shut up compiler warning
 	

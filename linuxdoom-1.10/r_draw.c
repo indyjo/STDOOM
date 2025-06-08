@@ -44,8 +44,8 @@ rcsid[] = "$Id: r_draw.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
 
 // ?
-#define MAXWIDTH			1120
-#define MAXHEIGHT			832
+#define MAXWIDTH			320
+#define MAXHEIGHT			200
 
 // status bar height at bottom of screen
 #define SBARHEIGHT		32
