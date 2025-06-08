@@ -187,15 +187,20 @@ void ymmusic_init()
     ymmusic_reset();
     double a = 125000.0 / 440.0;
     double b = 1.0 / (16.0 * 12.0);
+    double bendfactor[16];
+    for (short bend = 0; bend < 16; bend++) {
+        bendfactor[bend] = pow(2.0, b * bend);
+    }
     for (short note = 0; note < 128; note++)
     {
         if (note % 16 == 15)
         {
             fprintf(stderr, ".");
         }
+        double notefactor = pow(2.0, b * (16 * (69 - note)));
         for (short bend = 0; bend < 16; bend++)
         {
-            short divisor = ceil(a * pow(2.0, b * (16 * (69 - note) + bend)));
+            short divisor = ceil(a * notefactor * bendfactor[bend]);
             if (divisor > 4095) divisor = 4095;
             ymmusic_divisors[note][bend] = divisor;
         }
