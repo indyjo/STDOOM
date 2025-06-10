@@ -1059,6 +1059,7 @@ static void c2p_4x_lorez(register unsigned char *out, const unsigned char *in, u
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 0(%[out])             \n\t"
+        "movep.l    %[pdata], 320(%[out])           \n\t"
 
         // Pixel 2
         "move.w     %%d1,%%d2                       \n\t"
@@ -1073,6 +1074,7 @@ static void c2p_4x_lorez(register unsigned char *out, const unsigned char *in, u
 
         // Write these pixels into ST screen buffer
         "movep.l    %[pdata], 1(%[out])             \n\t"
+        "movep.l    %[pdata], 321(%[out])           \n\t"
 
         // Advance out address by 16 pixels (8 bytes) and loop
         "lea        8(%[out]), %[out]               \n\t"
@@ -1098,6 +1100,7 @@ static void c2p_4x_midrez(register unsigned char *out, const unsigned char *in, 
     short groups = pixels / 4 - 1;
     unsigned long pdata = 0; // 32 bits of planar pixel data
     unsigned short mask = 0x00ff<<3; // Mask for isolating table indices (after shifting)
+    unsigned char *out2 = out + 320;
     asm volatile (
         // Beginning of dbra loop
         "0:                                         \n\t"
@@ -1118,6 +1121,7 @@ static void c2p_4x_midrez(register unsigned char *out, const unsigned char *in, 
 
         // Write these pixels into ST screen buffer
         "move.l     %[pdata], (%[out])+             \n\t"
+        "move.l     %[pdata], (%[out2])+            \n\t"
 
         // Pixel 2
         "move.w     %%d1,%%d2                       \n\t"
@@ -1132,11 +1136,13 @@ static void c2p_4x_midrez(register unsigned char *out, const unsigned char *in, 
 
         // Write these pixels into ST screen buffer
         "move.l     %[pdata], (%[out])+             \n\t"
+        "move.l     %[pdata], (%[out2])+            \n\t"
 
         "dbra.w     %[groups],0b                    \n\t"
 
         // Outputs
         : [out] "+a" (out)
+        , [out2] "+a" (out2)
         , [in] "+a" (in)
         , [pdata] "+d" (pdata)
         , [groups] "+d" (groups)
@@ -1208,8 +1214,6 @@ static void c2p_screen_lorez(unsigned char *out, const unsigned char *in) {
             short phase = line & 3;
             if (phase < 2) {
                 c2p_4x_lorez(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
-            } else if (phase == 2) {
-                memcpy(out + 160*line, out + 160*line - 320, 320);
             }
         }
     }
@@ -1234,8 +1238,6 @@ static void c2p_screen_midrez(unsigned char *out, const unsigned char *in) {
             short phase = line & 3;
             if (phase < 2) {
                 c2p_4x_midrez(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase]);
-            } else if (phase == 2) {
-                memcpy(out + 160*line, out + 160*line - 320, 320);
             }
         }
     }
