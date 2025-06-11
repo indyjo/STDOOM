@@ -38,7 +38,7 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 #include "m_fixed.h"
 
 
-#ifdef __M68000__
+#ifndef __HAVE_68881__
 
 // Emits a mulu.w instruction. It's quite difficult to get gcc to do that :-)
 static uint32_t mulu(uint16_t a, uint16_t b) {
@@ -56,7 +56,7 @@ static uint32_t mulu(uint16_t a, uint16_t b) {
 #endif
 }
 
-#endif // __M68000__
+#endif
 
 // Fixme. __USE_C_FIXED__ or something.
 
@@ -65,7 +65,7 @@ FixedMul
 ( fixed_t	a,
   fixed_t	b )
 {
-#ifdef __M68000__
+#ifndef __HAVE_68881__
     // Is the result a negative number?
     boolean neg = 0 != ((a ^ b) & 0x80000000);
 
@@ -97,7 +97,7 @@ FixedScale
 ( fixed_t	a,
   short	b )
 {
-#ifdef __M68000__
+#ifndef __HAVE_68881__
     // Is the result a negative number?
     boolean neg = 0 != ((a ^ b) & 0x80000000);
     if (a < 0) a = -a;
@@ -122,7 +122,7 @@ FixedMulShort
 ( fixed_t	a,
   short	b )
 {
-#ifdef __M68000__
+#ifndef __HAVE_68881__
 
 #ifdef USEASM
     register fixed_t result asm("d0");
@@ -177,7 +177,7 @@ FixedDiv
 {
     if ( (abs(a)>>14) >= abs(b))
         return (a^b)<0 ? MININT : MAXINT;
-#ifdef __M68000__
+#ifndef __HAVE_68881__
     if (a < 0)
         return b<0?FixedDiv2(-a, -b):-FixedDiv2(-a, b);
     else
@@ -194,7 +194,7 @@ FixedDiv2
 ( fixed_t	a,
   fixed_t	b )
 {
-#ifdef __M68000__
+#ifndef __HAVE_68881__
     uint16_t ibit = 1;
     while (b < a)
     {

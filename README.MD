@@ -16,7 +16,9 @@ Running on an 8MHz machine should work, but is expected to be unplayably slow.
 - Put a WAD file like `DOOM1.WAD` next to it.
 - Start `STDOOM.TOS`.
 - Use keyboard or mouse for control, just as in the original game.
-- If you have a system with at least a Motorola 68020 with FPU, you can use the `STDOOM20.TOS`
+- If you have a system with at least a Motorola 68020 CPU but no FPU, you can use the `STDOOM20.TOS`
+  executable.
+- If you have a system with at least a Motorola 68020 with FPU, you can use the `STDOOM2F.TOS`
   executable.
 
 # FEATURES
@@ -28,7 +30,7 @@ Running on an 8MHz machine should work, but is expected to be unplayably slow.
 - Music playback using the YM-2149 soundchip (work in progress).
 - Controllable with keyboard and mouse.
 
-# NOT IMPLEMENTED
+## Not implemented
 
 - Network gameplay
 

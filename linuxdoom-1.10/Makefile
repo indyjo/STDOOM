@@ -6,9 +6,10 @@
 #
 #CC=  gcc  # gcc or g++
 
-CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall -msoft-float
-CFLAGS20=$(CFLAGS) -m68020
-LDFLAGS=-L/usr/X11R6/lib -mfastcall -msoft-float
+CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall
+CFLAGS20=$(CFLAGS) -m68020 -msoft-float
+CFLAGS2F=$(CFLAGS) -m68020 -m68881
+LDFLAGS=
 LDLIBS=-lm
 
 # subdirectory for objects
@@ -81,27 +82,36 @@ OBJS=				\
 		$(O)/sounds.o		\
 		$(O)/i_main.o
 OBJS20=$(OBJS:%.o=%.20.o)
+OBJS2F=$(OBJS:%.o=%.2f.o)
 
-all:	 $(O)/stdoom.tos $(O)/stdoom20.tos
+all:	 $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos
 
 clean:
-	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/*.o
+	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos $(O)/*.o
 
 $(O)/stdoom.tos:	$(OBJS)
-	$(CC) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
 
 $(O)/stdoom20.tos:	$(OBJS20)
-	$(CC) $(LDFLAGS) $(OBJS20) -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS20) $(LDFLAGS) $(OBJS20) -o $@ $(LDLIBS)
+
+$(O)/stdoom2f.tos:	$(OBJS2F)
+	$(CC) $(CFLAGS2F) $(LDFLAGS) $(OBJS2F) -o $@ $(LDLIBS)
+
+$(O)/%.2f.o:	%.c
+	$(CC) $(CPPFLAGS) $(CFLAGS2F) -c $< -o $@
 
 $(O)/%.20.o:	%.c
-	$(CC) $(CPPFLAGS) -m68020 $(CFLAGS20) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS20) -c $< -o $@
 
 $(O)/%.o:	%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 # Rule for compiling to assembly on demand
+$(O)/%.2f.s: %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS2F) -c $< -S -fverbose-asm -o $@
 $(O)/%.20.s: %.c
-	$(CC) $(CPPFLAGS) -m68020 $(CFLAGS20) -c $< -S -fverbose-asm -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS20) -c $< -S -fverbose-asm -o $@
 $(O)/%.s: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -S -fverbose-asm -o $@
 
