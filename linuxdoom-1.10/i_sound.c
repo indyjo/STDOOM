@@ -25,6 +25,7 @@ static const char
 rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 #include <mint/osbind.h>
+#include <mint/cookie.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -804,6 +805,22 @@ I_InitSound()
   int i;
   
 #ifdef SNDINTR
+
+  // Detect presence of DMA audio via cookie jar. If no cookie jar is present,
+  // the TOS version is too old and so will be the ST hardware.
+  long cookie;
+  if (C_FOUND == Getcookie(C__SND, &cookie)) {
+    if (cookie & 2) {
+      fprintf(stderr, "I_InitSound: DMA audio present\n");
+    } else {
+      fprintf(stderr, "I_InitSound: DMA audio not present\n");
+      nosfx = true;
+    }
+  } else {
+    fprintf(stderr, "I_InitSound: no cookie jar -> nosfx\n");
+    nosfx = true;
+  }
+
   if (!nosfx) {
     // We need the DMA sound buffers to be in ST memory, hence use Mxalloc when we can.
     // The docs claim that Mxalloc needs GEMDOS version >= 0.19, so check for that and fall back
