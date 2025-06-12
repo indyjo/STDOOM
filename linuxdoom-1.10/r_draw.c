@@ -95,9 +95,20 @@ byte*			dc_source;
 // just for profiling 
 int			dccount;
 
+/// @brief Converts a Q15.16 fixed-point value into a Q7.8 value that fits in a short
+/// @param n the Q15.16 value to convert
+/// @return a a short in Q7.8 format
 static short reduce(fixed_t n)
 {
-    return (n << (16-7)) >> 16;
+    return (n >> 8) & 0xffff;
+}
+
+/// @brief Converts a Q7.8 value into an inverted 8.0Q6 representation where the integral part is after the fractional part.
+/// @param n the Q7.8 value to convert
+/// @return a short in 8.0Q6 format
+static short to_8_0Q6(short n)
+{
+    return (n << 8) | ((n >> 8) & 0x007f);
 }
 
 //
@@ -134,8 +145,8 @@ void R_DrawColumn (void)
 
     // Determine scaling,
     //  which is the only mapping to be done.
-    // Reduce to 7.9 fixed-point short.
-    fracstep = reduce(dc_iscale); 
+    // Reduce to 8.8 fixed-point short.
+    fracstep = reduce(dc_iscale);
     frac = reduce(dc_texturemid) + (int)(dc_yl-centery) * fracstep;
 
     // Inner loop that does the actual texture mapping,
@@ -144,34 +155,49 @@ void R_DrawColumn (void)
     byte *source = dc_source;
     lighttable_t *colormap = dc_colormap;
 #ifdef USEASM
-    unsigned short tmp;
-    do {
-        asm (
-                "move.w %[frac],%[tmp]                  \n\t"
-                "lsr.w  %[shift],%[tmp]                 \n\t"
-                "move.b (%[source],%[tmp].w),%[tmp]     \n\t"
-                "move.b (%[colormap],%[tmp].w),%[tmp]   \n\t"
-                // outputs
-                : [tmp] "=d" (tmp)
-                // inputs
-                : [frac] "d" (frac)
-                , [source] "a" (source)
-                , [colormap] "a" (colormap)
-                , [shift] "d" (9)
-                // clobbers
-                : "memory"
-        );
-        *dest = tmp;
-	dest += SCREENWIDTH; 
-	frac += fracstep;
-	
-    } while (count--); 
+    // Invert the order of the fixed-point values so that the integral part
+    // is in the lowest 7 bits, thereby making bit-shifting unnecessary.
+    fracstep = to_8_0Q6(fracstep);
+    frac = to_8_0Q6(frac);
+    // Invariant: only least-significant byte is ever != 0
+    unsigned long tmp = 0;
+    asm volatile (
+        // Clear X flag for first addx
+        "addi.w #0,%[frac]                      \n\t"
+
+        // Loop begin
+        "0:                                     \n\t"
+
+        "move.b %[frac],%[tmp]                  \n\t"
+        "move.b (%[source],%[tmp].w),%[tmp]     \n\t"
+        "move.b (%[colormap],%[tmp].w),(%[dest])\n\t"
+        "addx.w %[step],%[frac]                 \n\t"
+        "and.w  %[mask],%[frac]                 \n\t"
+        "lea    %c[width](%[dest]),%[dest]      \n\t"
+
+        "dbra   %[count],0b                     \n\t"
+
+        // outputs
+        : [tmp] "+&d" (tmp)
+        , [frac] "+&d" (frac)
+        , [dest] "+&a" (dest)
+        , [count] "+&d" (count)
+        // inputs
+        : [source] "a" (source)
+        , [colormap] "a" (colormap)
+        , [step] "d" (fracstep)
+        , [zero] "d" (0)
+        , [mask] "d" (0xff7f)
+        , [width] "i" (SCREENWIDTH)
+        // clobbers
+        : "memory", "cc"
+    );	
 #else
     do 
     {
 	// Re-map color indices from wall texture column
 	//  using a lighting/special effects LUT.
-	*dest = colormap[source[frac>>(16-7)]];
+	*dest = colormap[source[frac>>8]];
 	
 	dest += SCREENWIDTH; 
 	frac += fracstep;
