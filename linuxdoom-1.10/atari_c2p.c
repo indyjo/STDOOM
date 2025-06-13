@@ -1426,43 +1426,46 @@ static void c2p_4x_lorez(register unsigned char *out, const unsigned char *in, u
     if (pixels < 4) return;
     short groups = pixels / 4 - 1;
     unsigned long pdata = 0; // 32 bits of planar pixel data
-    unsigned short mask = 0x00ff<<3; // Mask for isolating table indices (after shifting)
+    unsigned long mask = 0xff00ff<<3; // Mask for isolating table indices (after shifting)
     asm volatile (
         // Beginning of dbra loop
         "0:                                         \n\t"
 
-        // Read four consecutive pixels from buffer into two 16 bit registers
-        "movem.w    (%[in])+, %%d0-%%d1             \n\t"
+        // Read four consecutive pixels from buffer into one 32 register
+        "move.l     (%[in])+, %%d0                  \n\t"
+        "move.l     %%d0,%%d1                       \n\t"
 
-        // Pixel 0
-        "move.w     %%d0,%%d2                       \n\t"
-        "lsr.w      #5,%%d2                         \n\t"
-        "and.w      %[mask],%%d2                    \n\t"
-        "move.l     (%[table],%%d2.w), %[pdata]     \n\t"
+        // Prepare d0 for reading pixels 0 and 2
+        "lsr.l      #5,%%d0                         \n\t"
+        "and.l      %[mask],%%d0                    \n\t"
 
-        // Pixel 1
-        "lsl.w      #3,%%d0                         \n\t"
-        "and.w      %[mask],%%d0                    \n\t"
-        "or.l       4(%[table],%%d0.w), %[pdata]    \n\t"
-
-        // Write these pixels into ST screen buffer
-        "movep.l    %[pdata], 0(%[out])             \n\t"
-        "movep.l    %[pdata], 320(%[out])           \n\t"
+        // Prepare d1 for reading pixels 1 and 3
+        "lsl.l      #3,%%d1                         \n\t"
+        "and.l      %[mask],%%d1                    \n\t"
 
         // Pixel 2
-        "move.w     %%d1,%%d2                       \n\t"
-        "lsr.w      #5,%%d2                         \n\t"
-        "and.w      %[mask],%%d2                    \n\t"
-        "move.l     0(%[table],%%d2.w), %[pdata]    \n\t"
+        "move.l     0(%[table],%%d0.w),%[pdata]     \n\t"
 
         // Pixel 3
-        "lsl.w      #3,%%d1                         \n\t"
-        "and.w      %[mask],%%d1                    \n\t"
-        "or.l       4(%[table],%%d1.w), %[pdata]    \n\t"
+        "or.l       4(%[table],%%d1.w),%[pdata]     \n\t"
 
         // Write these pixels into ST screen buffer
-        "movep.l    %[pdata], 1(%[out])             \n\t"
-        "movep.l    %[pdata], 321(%[out])           \n\t"
+        "movep.l    %[pdata],1(%[out])              \n\t"
+        "movep.l    %[pdata],321(%[out])            \n\t"
+
+        // Move pixels 0 and 1 into lower word positions of d0 and d1
+        "swap       %%d0                            \n\t"
+        "swap       %%d1                            \n\t"
+
+        // Pixel 0
+        "move.l     (%[table],%%d0.w),%[pdata]      \n\t"
+
+        // Pixel 1
+        "or.l       4(%[table],%%d1.w),%[pdata]     \n\t"
+
+        // Write these pixels into ST screen buffer
+        "movep.l    %[pdata],0(%[out])              \n\t"
+        "movep.l    %[pdata],320(%[out])            \n\t"
 
         // Advance out address by 16 pixels (8 bytes) and loop
         "lea        8(%[out]), %[out]               \n\t"
