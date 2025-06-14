@@ -18,6 +18,7 @@ O=atari
 # not too sophisticated dependency
 OBJS=				\
 		$(O)/atari_c2p.o		\
+		$(O)/atari_checkcpu.o	\
 		$(O)/atari_ym.o		\
 		$(O)/doomdef.o		\
 		$(O)/doomstat.o		\
@@ -87,16 +88,16 @@ OBJS2F=$(OBJS:%.o=%.2f.o)
 all:	 $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos
 
 clean:
-	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos $(O)/*.o
+	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos $(O)/*.o $(O)/*.map
 
 $(O)/stdoom.tos:	$(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS) -Wl,-Map=$@.map
 
 $(O)/stdoom20.tos:	$(OBJS20)
-	$(CC) $(CFLAGS20) $(LDFLAGS) $(OBJS20) -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS20) $(LDFLAGS) $(OBJS20) -o $@ $(LDLIBS) -Wl,-Map=$@.map
 
 $(O)/stdoom2f.tos:	$(OBJS2F)
-	$(CC) $(CFLAGS2F) $(LDFLAGS) $(OBJS2F) -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS2F) $(LDFLAGS) $(OBJS2F) -o $@ $(LDLIBS) -Wl,-Map=$@.map
 
 $(O)/%.2f.o:	%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS2F) -c $< -o $@
