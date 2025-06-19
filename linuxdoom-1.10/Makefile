@@ -9,7 +9,7 @@
 CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall
 CFLAGS20=$(CFLAGS) -m68020-60 -msoft-float
 CFLAGS2F=$(CFLAGS) -m68020-60 -m68881
-LDFLAGS=
+LDFLAGS= -Wl,-Map=$@.map
 LDLIBS=./deps/68000.soft-float.fastcall/libm.a
 LDLIBS20=./deps/68020-60.soft-float.fastcall/libm.a
 LDLIBS2F=./deps/68020-60.68881.fastcall/libm.a
@@ -20,6 +20,7 @@ O=atari
 # not too sophisticated dependency
 OBJS=				\
 		$(O)/atari_c2p.o		\
+		$(O)/atari_checkcpu.o	\
 		$(O)/atari_ym.o		\
 		$(O)/doomdef.o		\
 		$(O)/doomstat.o		\
@@ -89,7 +90,7 @@ OBJS2F=$(OBJS:%.o=%.2f.o)
 all:	 $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos
 
 clean:
-	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos $(O)/*.o
+	rm -f $(O)/stdoom.tos $(O)/stdoom20.tos $(O)/stdoom2f.tos $(O)/*.o $(O)/*.map
 
 $(O)/stdoom.tos:	$(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
