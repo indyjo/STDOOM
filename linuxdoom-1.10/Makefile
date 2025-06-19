@@ -7,8 +7,8 @@
 #CC=  gcc  # gcc or g++
 
 CFLAGS=-O3 -Wall -DNORMALUNIX -DLINUX -D__BIG_ENDIAN__ -DUSEASM -mfastcall
-CFLAGS20=$(CFLAGS) -m68020-60 -msoft-float
-CFLAGS2F=$(CFLAGS) -m68020-60 -m68881
+CFLAGS20=$(CFLAGS) -m68020-60 -mtune=68020 -msoft-float
+CFLAGS2F=$(CFLAGS) -m68020-60 -mtune=68020 -m68881
 LDFLAGS= -Wl,-Map=$@.map
 LDLIBS=./deps/68000.soft-float.fastcall/libm.a
 LDLIBS20=./deps/68020-60.soft-float.fastcall/libm.a
