@@ -235,8 +235,8 @@ void P_XYMovement (mobj_t* mo)
     }
     else
     {
-	mo->momx = FixedMul (mo->momx, FRICTION);
-	mo->momy = FixedMul (mo->momy, FRICTION);
+	mo->momx = FixedScale32 (mo->momx, FRICTION);
+	mo->momy = FixedScale32 (mo->momy, FRICTION);
     }
 }
 
@@ -911,8 +911,8 @@ P_SpawnMissile
 
     th->angle = an;
     an >>= ANGLETOFINESHIFT;
-    th->momx = FixedMul (th->info->speed, finecosine[an]);
-    th->momy = FixedMul (th->info->speed, finesine[an]);
+    th->momx = FixedScale32 (th->info->speed, finecosine[an]);
+    th->momy = FixedScale32 (th->info->speed, finesine[an]);
 	
     dist = P_AproxDistance (dest->x - source->x, dest->y - source->y);
     dist = dist / th->info->speed;
@@ -977,9 +977,9 @@ P_SpawnPlayerMissile
 
     th->target = source;
     th->angle = an;
-    th->momx = FixedMul( th->info->speed,
+    th->momx = FixedScale32( th->info->speed,
 			 finecosine[an>>ANGLETOFINESHIFT]);
-    th->momy = FixedMul( th->info->speed,
+    th->momy = FixedScale32( th->info->speed,
 			 finesine[an>>ANGLETOFINESHIFT]);
     th->momz = FixedMul( th->info->speed, slope);
 

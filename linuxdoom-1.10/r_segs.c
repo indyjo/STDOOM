@@ -407,7 +407,7 @@ R_StoreWallRange
     distangle = ANG90 - offsetangle;
     hyp = R_PointToDist (curline->v1->x, curline->v1->y);
     sineval = finesine[distangle>>ANGLETOFINESHIFT];
-    rw_distance = FixedMul (hyp, sineval);
+    rw_distance = FixedScale32 (hyp, sineval);
 		
 	
     ds_p->x1 = rw_x = start;
@@ -627,7 +627,7 @@ R_StoreWallRange
 	    offsetangle = ANG90;
 
 	sineval = finesine[offsetangle >>ANGLETOFINESHIFT];
-	rw_offset = FixedMul (hyp, sineval);
+	rw_offset = FixedScale32 (hyp, sineval);
 
 	if (rw_normalangle-rw_angle1 < ANG180)
 	    rw_offset = -rw_offset;

@@ -37,11 +37,20 @@
 
 typedef int fixed_t;
 
+// Multiplication of two Q15.16 fixed point values
 fixed_t FixedMul	(fixed_t a, fixed_t b);
+
+// Multiplication of a Q15.16 fixed point value with a Q0.15 bit value representing range [-1; 1)
 fixed_t FixedScale	(fixed_t a, short b);
+
+// Multiplication of two Q15.16 fixed point values a and b where b is known to be in range (-1; 1).
+fixed_t FixedScale32	(fixed_t a, fixed_t b);
+
+// Multiplication of a Q15.16 fixed point value with a 16 bit signed integer
 fixed_t FixedMulShort	(fixed_t a, short b);
+
+// Division of two Q15.16 fixed point values.
 fixed_t FixedDiv	(fixed_t a, fixed_t b);
-fixed_t FixedDiv2	(fixed_t a, fixed_t b);
 
 
 

@@ -118,6 +118,35 @@ FixedScale
 }
 
 fixed_t
+FixedScale32
+( fixed_t	a,
+  fixed_t	b )
+{
+#ifndef __HAVE_68881__
+    // Is the result a negative number?
+    boolean neg = 0 != ((a ^ b) & 0x80000000);
+
+    // Only work with unsigned numbers.
+    if (a < 0) a = -a;
+    if (b < 0) b = -b;
+    uint16_t alw = a;
+    uint16_t ahw = a >> FRACBITS;
+    uint16_t blw = b;
+
+    uint32_t hl = ahw && blw ? mulu(ahw, blw) : 0;
+    
+    // Make sure we round towards -inf
+    uint32_t ll = alw && blw ? (mulu(alw, blw) + (neg ? 0xffff : 0)) >> FRACBITS : 0;
+
+    int32_t result = hl + ll;
+    if (neg) result = -result;
+    return result;
+#else
+    return FixedMul(a, b);
+#endif
+}
+
+fixed_t
 FixedMulShort
 ( fixed_t	a,
   short	b )
@@ -170,6 +199,8 @@ FixedMulShort
 // FixedDiv, C version.
 //
 
+static fixed_t FixedDiv2	(fixed_t a, fixed_t b);
+
 fixed_t
 FixedDiv
 ( fixed_t	a,
@@ -189,7 +220,7 @@ FixedDiv
 
 
 
-fixed_t
+static fixed_t
 FixedDiv2
 ( fixed_t	a,
   fixed_t	b )

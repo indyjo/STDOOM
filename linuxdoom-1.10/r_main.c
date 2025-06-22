@@ -471,7 +471,7 @@ fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
     sinv = finesine[(visangle-rw_normalangle)>>ANGLETOFINESHIFT];	
     dist = FixedDiv (rw_distance, sinv);
     cosv = finecosine[(viewangle-visangle)>>ANGLETOFINESHIFT];
-    z = abs(FixedMul (dist, cosv));
+    z = abs(FixedScale32 (dist, cosv));
     scale = FixedDiv(projection, z);
     return scale;
 }
@@ -483,8 +483,8 @@ fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
     // both sines are allways positive
     sinea = finesine[anglea>>ANGLETOFINESHIFT];	
     sineb = finesine[angleb>>ANGLETOFINESHIFT];
-    num = FixedMul(projection,sineb)<<detailshift;
-    den = FixedMul(rw_distance,sinea);
+    num = FixedScale32(projection,sineb)<<detailshift;
+    den = FixedScale32(rw_distance,sinea);
 
     if (den > num>>16)
     {

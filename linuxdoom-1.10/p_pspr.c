@@ -121,10 +121,10 @@ void P_CalcSwing (player_t*	player)
     swing = player->bob;
 
     angle = (FINEANGLES/70*leveltime)&FINEMASK;
-    swingx = FixedMul ( swing, finesine[angle]);
+    swingx = FixedScale32 ( swing, finesine[angle]);
 
     angle = (FINEANGLES/70*leveltime+FINEANGLES/2)&FINEMASK;
-    swingy = -FixedMul ( swingx, finesine[angle]);
+    swingy = -FixedScale32 ( swingx, finesine[angle]);
 }
 
 
@@ -328,9 +328,9 @@ A_WeaponReady
     
     // bob the weapon based on movement speed
     angle = (128*leveltime)&FINEMASK;
-    psp->sx = FRACUNIT + FixedMul (player->bob, finecosine[angle]);
+    psp->sx = FRACUNIT + FixedScale32 (player->bob, finecosine[angle]);
     angle &= FINEANGLES/2-1;
-    psp->sy = WEAPONTOP + FixedMul (player->bob, finesine[angle]);
+    psp->sy = WEAPONTOP + FixedScale32 (player->bob, finesine[angle]);
 }
 
 

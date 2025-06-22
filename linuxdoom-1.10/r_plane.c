@@ -154,8 +154,8 @@ R_MapPlane
 	
     length = FixedMul (distance,distscale[x1]);
     angle = (viewangle + xtoviewangle[x1])>>ANGLETOFINESHIFT;
-    ds_xfrac = viewx + FixedMul(finecosine[angle], length);
-    ds_yfrac = -viewy - FixedMul(finesine[angle], length);
+    ds_xfrac = viewx + FixedScale32(length, finecosine[angle]);
+    ds_yfrac = -viewy - FixedScale32(length, finesine[angle]);
 
     if (fixedcolormap)
 	ds_colormap = fixedcolormap;

@@ -162,8 +162,21 @@ void R_DrawColumn (void)
     // Invariant: only least-significant byte is ever != 0
     unsigned long tmp = 0;
     asm volatile (
-        // Clear X flag for first addx
-        "addi.w #0,%[frac]                      \n\t"
+        // Unroll loop 2x
+        "lsr.w  #1,%[count]                     \n\t"
+
+        // Even number of pixels to be drawn (i.e., Carry set)? Skip special initialization.
+        "jcs    3f                              \n\t"
+        
+        // Odd number of pixels. Clear X flag and ompensate for %[dest]
+        // getting incremented by 2*%[width] at end of loop.
+        "add.w  %[tmp],%[frac]                  \n\t"
+        "lea    (-1*%c[width])(%[dest]),%[dest] \n\t"
+        "jmp    1f                              \n\t"
+
+        // Even number of pixels. Clear X flag for next addx and enter loop.
+        "3:                                     \n\t"
+        "add.w  %[tmp],%[frac]                  \n\t"
 
         // Loop begin
         "0:                                     \n\t"
@@ -173,8 +186,15 @@ void R_DrawColumn (void)
         "move.b (%[colormap],%[tmp].w),(%[dest])\n\t"
         "addx.w %[step],%[frac]                 \n\t"
         "and.w  %[mask],%[frac]                 \n\t"
-        "lea    %c[width](%[dest]),%[dest]      \n\t"
 
+        "1:                                     \n\t"
+        "move.b %[frac],%[tmp]                  \n\t"
+        "move.b (%[source],%[tmp].w),%[tmp]     \n\t"
+        "move.b (%[colormap],%[tmp].w),%c[width](%[dest])\n\t"
+        "addx.w %[step],%[frac]                 \n\t"
+        "and.w  %[mask],%[frac]                 \n\t"
+
+        "lea    (2*%c[width])(%[dest]),%[dest]  \n\t"
         "dbra   %[count],0b                     \n\t"
 
         // outputs
