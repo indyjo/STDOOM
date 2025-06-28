@@ -28,7 +28,7 @@ rcsid[] = "$Id: r_segs.c,v 1.3 1997/01/29 20:10:19 b1 Exp $";
 
 
 
-
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "i_system.h"
@@ -190,7 +190,21 @@ R_RenderMaskedSegRange
 }
 
 
-
+static int32_t divs(int32_t a, int16_t b) {
+#ifdef USEASM
+    register int32_t result = a;
+    asm (
+        "divs.w     %[b],%[result]  \n\t"
+	"ext.l	    %[result]       \n\t"
+        : [result] "+d" (result)
+        : [b] "d" (b)
+        : "cc"
+    );
+    return result;
+#else
+    return a / b;
+#endif
+}
 
 //
 // R_RenderSegLoop
@@ -273,7 +287,11 @@ void R_RenderSegLoop (void)
 
 	    dc_colormap = walllights[index];
 	    dc_x = rw_x;
+#if defined(__mc68020__) || defined(__mc68030__) || defined(__mc68040__) || defined(__mc68060__)
 	    dc_iscale = 0xffffffffu / (unsigned)rw_scale;
+#else
+	    dc_iscale = divs(0xffff, rw_scale >> 8) << 8;
+#endif
 	}
 	
 	// draw the wall tiers
