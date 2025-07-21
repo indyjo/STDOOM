@@ -9,7 +9,8 @@ float colors[768];
 
 //unsigned char subset[] = {0,      93, 241, 202, 253, 250, 38, 222, 216, 140, 131, 158, 116,     58, 249, 4};
 //unsigned char subset[] =   {0, 90, 101, 241, 202,    252,   38,    219,   144, 136, 158, 120, 72, 58, 249, 4};
-unsigned char subset[] =   {0, 166, 156, 210};
+unsigned char subset[] =   { 0, 88, 102, 205,  184,    6,   42,    217,   144, 136, 159, 121, 72, 56, 249, 4 };
+//unsigned char subset[] =   {0, 166, 156, 210};
 
 typedef float vec3[3];
 
@@ -95,7 +96,7 @@ int main(int argc, const char** argv) {
 		float y = 0.299f*r + 0.587f*g + 0.114f*b;
 		float u = 0.492f*(b-y);
 		float v = 0.877f*(r-y);
-		colors[3*i + 0] = 2*y; // emphasize y
+		colors[3*i + 0] = 4*y; // emphasize y
 		colors[3*i + 1] = u;
 		colors[3*i + 2] = v;
 	}
