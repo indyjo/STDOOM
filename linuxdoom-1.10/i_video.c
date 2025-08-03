@@ -40,7 +40,7 @@ rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 byte		*st_screen;
 static void *old_interrupt_handler=NULL;
-static unsigned short old_palette[16];
+static unsigned short old_palette[256];
 
 
 void I_ShutdownGraphics(void)
@@ -326,8 +326,8 @@ void I_InitGraphics(void)
     old_interrupt_handler = *(void**)0x118;
     *(void**)0x118 = keyboard_interrupt;
     printf("Initializing c2p tables...\n");
-    save_palette(old_palette);
     init_c2p_table();
+    save_palette(old_palette);
     draw_palette_table(st_screen);
     printf ("Done.\n");
     // Set cursor to home and stop blinking.

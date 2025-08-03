@@ -1,4 +1,5 @@
 #include <mint/osbind.h>
+#include <stdint.h>
 #include "atari_c2p.h"
 #include "i_system.h"
 #include "r_main.h"
@@ -14,11 +15,13 @@ const unsigned char subset_midrez[] =
 const unsigned char subset_hirez[] = 
     {0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 const unsigned char *subset;
-short num_colors;
 
 // Some function pointers depending on screen resolution.
 void (*c2p_statusbar_drawfunc)(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end);
 void (*c2p_screen_drawfunc)(unsigned char *out, const unsigned char *in);
+void (*set_doom_palette)(const unsigned char *colors);
+void (*install_palette)(const unsigned short *palette);
+void (*save_palette)(unsigned short *palette);
 
 
 // [DOOM color 0..255][ST color 0..15]
@@ -825,15 +828,51 @@ static unsigned short stcolor(unsigned char r, unsigned char g, unsigned char b)
     entry |= convert_channel(b);
     return entry;
 }
+static unsigned short ttcolor(unsigned char r, unsigned char g, unsigned char b) {
+    unsigned short entry = r >> 4;
+    entry <<= 4;
+    entry |= g >> 4;
+    entry <<= 4;
+    entry |= b >> 4;
+    return entry;
+}
 
-void install_palette(const unsigned short *palette) {
+void install_st_palette(const unsigned short *palette) {
     volatile unsigned short *reg = (unsigned short*) 0xff8240;
     for (short n=0; n<16; n++) *reg++ = *palette++;
 }
 
-void save_palette(unsigned short *palette) {
+void install_tt_palette(const unsigned short *palette) {
+    volatile unsigned short *reg = (unsigned short*) 0xffff8400;
+    for (short n=0; n<256; n++) *reg++ = *palette++;
+}
+
+void save_st_palette(unsigned short *palette) {
     volatile unsigned short *reg = (unsigned short*) 0xff8240;
     for (short n=0; n<16; n++) *palette++ = *reg++;
+}
+
+void save_tt_palette(unsigned short *palette) {
+    volatile unsigned short *reg = (unsigned short*) 0xffff8400;
+    for (short n=0; n<256; n++) *palette++ = *reg++;
+}
+
+void set_st_doom_palette(const unsigned char *colors) {
+    unsigned short stpalette[16];
+    for (int i=0; i<16; i++) {
+        const unsigned char *c = &colors[3*subset[i]];
+        stpalette[i] = stcolor(c[0], c[1], c[2]);
+    }
+    install_st_palette(stpalette);
+}
+
+void set_tt_doom_palette(const unsigned char *colors) {
+    unsigned short ttpalette[256];
+    for (int i=0; i<256; i++) {
+        const unsigned char *c = &colors[3*i];
+        ttpalette[i] = ttcolor(c[0], c[1], c[2]);
+    }
+    install_tt_palette(ttpalette);
 }
 
 // Find the ST palette color index to fill a pixel with according to given weights.
@@ -891,9 +930,11 @@ unsigned long bayer4_midrez_pdata(const unsigned char *weights, short phase, sho
 static void c2p_1x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
 static void c2p_1x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
 static void c2p_1x_hirez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
+static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels);
 static void c2p_screen_lorez(unsigned char *out, const unsigned char *in);
 static void c2p_screen_midrez(unsigned char *out, const unsigned char *in);
 static void c2p_screen_hirez(unsigned char *out, const unsigned char *in);
+static void c2p_screen_tt_lorez(unsigned char *out, const unsigned char *in);
 
 static void c2p_statusbar_lorez(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
     out += y_begin * 160 + x_begin / 2;
@@ -925,15 +966,26 @@ static void c2p_statusbar_hirez(unsigned char *out, const unsigned char *in, sho
     }
 }
 
+static void c2p_statusbar_tt_lorez(unsigned char *out, const unsigned char *in, short y_begin, short y_end, short x_begin, short x_end) {
+    out += y_begin * 640 + x_begin;
+    in += y_begin * 320 + x_begin;
+    for (int line = y_begin; line < y_end; line++ ) {
+        c2p_1x_tt_lorez(out, in, x_end - x_begin);
+        out += 640;
+        in += 320;
+    }
+}
+
 void init_c2p_table() {
     short res = Getrez();
     if (res == 0) {
         // Low Resolution, 16 colors
         subset = subset_lorez;
-        num_colors = 16;
         c2p_screen_drawfunc = c2p_screen_lorez;
         c2p_statusbar_drawfunc = c2p_statusbar_lorez;
-        set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+        install_palette = install_st_palette;
+        save_palette = save_st_palette;
+        set_doom_palette = set_st_doom_palette;
         for (int i=0; i<256; i++) {
             unsigned char *weights = mix_weights_lorez[i];
             for (int phase=0; phase<4; phase++) {
@@ -962,10 +1014,11 @@ void init_c2p_table() {
     } else if (res == 1) {
         // Medium resolution, 4 colors
         subset = subset_midrez;
-        num_colors = 4;
         c2p_screen_drawfunc = c2p_screen_midrez;
         c2p_statusbar_drawfunc = c2p_statusbar_midrez;
-        set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+        install_palette = install_st_palette;
+        save_palette = save_st_palette;
+        set_doom_palette = set_st_doom_palette;
         for (int i=0; i<256; i++) {
             unsigned char *weights = mix_weights_midrez[i];
             for (int phase=0; phase<4; phase++) {
@@ -998,9 +1051,11 @@ void init_c2p_table() {
     } else if (res == 2) {
         // High resolution, 2 colors
         subset = subset_hirez;
-        num_colors = 2;
         c2p_screen_drawfunc = c2p_screen_hirez;
         c2p_statusbar_drawfunc = c2p_statusbar_hirez;
+        install_palette = install_st_palette;
+        save_palette = save_st_palette;
+        set_doom_palette = set_st_doom_palette;
         for (int i=0; i<256; i++) {
             unsigned char *weights = mix_weights_hirez[i];
             for (int phase=0; phase<2; phase++) {
@@ -1033,6 +1088,13 @@ void init_c2p_table() {
                 }
             }
         }
+    } else if (res == 7) {
+        // TT low resolution, 256 colors in 32
+        c2p_screen_drawfunc = c2p_screen_tt_lorez;
+        c2p_statusbar_drawfunc = c2p_statusbar_tt_lorez;
+        install_palette = install_tt_palette;
+        save_palette = save_tt_palette;
+        set_doom_palette = set_tt_doom_palette;
     } else {
         I_Error("Unsupported resolution %d\n", res);
     }
@@ -1196,6 +1258,34 @@ static void c2p_1x_hirez(register unsigned char *out, const unsigned char *in, u
         *(unsigned short*)out = pdata >> 16;
 		pixels -= 8;
 		out += 2;
+	}
+}
+
+static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels) {
+    if (pixels < 16) return;
+    pixels -= pixels % 16;
+
+
+    while (pixels != 0) {
+        register uint32_t plane01=0, plane23=0, plane45=0, plane67=0;
+        for(int i=0; i<16; i++) {
+            register uint8_t c = *in++;
+            plane01 += plane01 + (( c&1?1:0)<<16) + (  c&2?1:0);
+            plane23 += plane23 + ( c&4?65536:0) + (  c&8?1:0);
+            plane45 += plane45 + (c&16?65536:0) + ( c&32?1:0);
+            plane67 += plane67 + (c&64?65536:0) + (c&128?1:0);
+        }
+        *(uint32_t*)(out) = plane01;
+        *(uint32_t*)(out+4) = plane23;
+        *(uint32_t*)(out+8) = plane45;
+        *(uint32_t*)(out+12) = plane67;
+        out += 320;
+        *(uint32_t*)(out) = plane01;
+        *(uint32_t*)(out+4) = plane23;
+        *(uint32_t*)(out+8) = plane45;
+        *(uint32_t*)(out+12) = plane67;
+        out -= 304;
+		pixels -= 16;
 	}
 }
 
@@ -1601,16 +1691,8 @@ static void c2p_4x_hirez(register unsigned char *out, const unsigned char *in, u
     );
 }
 
-void set_doom_palette(const unsigned char *colors) {
-    unsigned short stpalette[16];
-    for (int i=0; i<16; i++) {
-        const unsigned char *c = &colors[3*subset[i]];
-        stpalette[i] = stcolor(c[0], c[1], c[2]);
-    }
-    install_palette(stpalette);
-}
-
 void draw_palette_table(unsigned char *st_screen) {
+    set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
     short res = Getrez();
     unsigned char buf[128+16];
 	unsigned char c = 0;
@@ -1633,6 +1715,8 @@ void draw_palette_table(unsigned char *st_screen) {
 		    for (int i=0; i<8; i++) c2p_1x_midrez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
         } else if (res == 2) {
 		    for (int i=0; i<8; i++) c2p_1x_hirez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%2]);
+        } else if (res == 7) {
+		    for (int i=0; i<8; i++) c2p_1x_tt_lorez(st_screen + 640*(32+y+i), buf, 128+16);
         }
 	}
 }
@@ -1697,6 +1781,30 @@ static void c2p_screen_hirez(unsigned char *out, const unsigned char *in) {
     if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
         for (short line = 0; line < splitline; line++ ) {
             c2p_1x_hirez(out + 160*line, in + 320*line, 320, c2p_table[line&1]);
+        }
+    } else if(viewwidth > SCREENWIDTH/4) {
+        // 2x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            c2p_2x_hirez(out + 160*line, in + SCREENWIDTH*(42 + line/2) + 80, 160, c2p_2x_table[line&1]);
+        }
+    } else {
+        // 4x zoom
+        for (short line = 0; line < splitline; line++ ) {
+            short phase = line & 3;
+            if (phase < 2) {
+                c2p_4x_hirez(out + 160*line, in + SCREENWIDTH*(63 + line/4) + 120, 80, c2p_4x_table[phase&1]);
+            }
+        }
+    }
+}
+
+static void c2p_screen_tt_lorez(unsigned char *out, const unsigned char *in) {
+    boolean zoom_allowed = gamestate == GS_LEVEL
+        && !menuactive && !inhelpscreens && !automapactive;
+    short splitline = !zoom_allowed || viewheight == SCREENHEIGHT ? SCREENHEIGHT : SCREENHEIGHT - 32;
+    if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
+        for (short line = 0; line < splitline; line++ ) {
+            c2p_1x_tt_lorez(out + 640*line, in + 320*line, 320);
         }
     } else if(viewwidth > SCREENWIDTH/4) {
         // 2x zoom
