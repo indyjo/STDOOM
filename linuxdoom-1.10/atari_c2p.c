@@ -815,6 +815,11 @@ static unsigned long c2p_2x_table[4][256][4];
 // [phase 0..3][color 0..255][pixel 0..1]
 static unsigned long c2p_4x_table[4][256][2];
 
+// Small table for C2P on the Atari TT where the table should fit in cache.
+// Converts 4 bits of a chunky pixel into a planar representation that can
+// be written into planar video memory using movep. Sets bits 7, 15, 23 and 31.
+static uint32_t c2p_tt_table[16];
+
 static unsigned short convert_channel(unsigned char v) {
     unsigned short r = (v & 0xe0) >> 5; // Bits 7,6,5 shifted to 2,1,0
     r |= (v & 0x10) >> 1; // STe color bit
@@ -930,7 +935,7 @@ unsigned long bayer4_midrez_pdata(const unsigned char *weights, short phase, sho
 static void c2p_1x_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
 static void c2p_1x_midrez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
 static void c2p_1x_hirez(register unsigned char *out, const unsigned char *in, unsigned short pixels, unsigned long table[][8]);
-static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels);
+static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, u_int32_t *table);
 static void c2p_screen_lorez(unsigned char *out, const unsigned char *in);
 static void c2p_screen_midrez(unsigned char *out, const unsigned char *in);
 static void c2p_screen_hirez(unsigned char *out, const unsigned char *in);
@@ -970,7 +975,7 @@ static void c2p_statusbar_tt_lorez(unsigned char *out, const unsigned char *in, 
     out += y_begin * 640 + x_begin;
     in += y_begin * 320 + x_begin;
     for (int line = y_begin; line < y_end; line++ ) {
-        c2p_1x_tt_lorez(out, in, x_end - x_begin);
+        c2p_1x_tt_lorez(out, in, x_end - x_begin, c2p_tt_table);
         out += 640;
         in += 320;
     }
@@ -1095,6 +1100,16 @@ void init_c2p_table() {
         install_palette = install_tt_palette;
         save_palette = save_tt_palette;
         set_doom_palette = set_tt_doom_palette;
+        for (int i=0; i<16; i++) {
+            uint32_t pdata = 0;
+            if (i & 1) pdata |= 1<<31;
+            if (i & 2) pdata |= 1<<23;
+            if (i & 4) pdata |= 1<<15;
+            if (i & 8) pdata |= 1<<7;
+            c2p_tt_table[i] = pdata;
+        }
+        // Clear screen
+        memset(Physbase(), 0, 320*480);
     } else {
         I_Error("Unsupported resolution %d\n", res);
     }
@@ -1261,30 +1276,47 @@ static void c2p_1x_hirez(register unsigned char *out, const unsigned char *in, u
 	}
 }
 
-static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels) {
+static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, uint32_t *table) {
     if (pixels < 16) return;
     pixels -= pixels % 16;
-
+    const uint32_t *in4 = (uint32_t *)in;
 
     while (pixels != 0) {
-        register uint32_t plane01=0, plane23=0, plane45=0, plane67=0;
-        for(int i=0; i<16; i++) {
-            register uint8_t c = *in++;
-            plane01 += plane01 + (( c&1?1:0)<<16) + (  c&2?1:0);
-            plane23 += plane23 + ( c&4?65536:0) + (  c&8?1:0);
-            plane45 += plane45 + (c&16?65536:0) + ( c&32?1:0);
-            plane67 += plane67 + (c&64?65536:0) + (c&128?1:0);
+        // First the even-indexed 8 pixels, then the odd-indexed 8 pixels.
+        #pragma GCC unroll 2
+        for(int i=0; i<2; i++) {
+            // 8 pixels each of 4 bitplanes
+            register uint32_t plane0123=0, plane4567=0;
+            // Read 8 chunky pixels from memory
+            register uint32_t c0 = *in4++, c1 = *in4++;
+            #pragma GCC unroll 0
+            for (int j=0; j<4; j++) {
+                plane0123 = (plane0123>>1) | table[c1&15];
+                c1 >>= 4;
+                plane4567 = (plane4567>>1) | table[c1&15];
+                c1 >>= 4;
+            }
+            #pragma GCC unroll 0
+            for (int j=0; j<4; j++) {
+                plane0123 = (plane0123>>1) | table[c0&15];
+                c0 >>= 4;
+                plane4567 = (plane4567>>1) | table[c0&15];
+                c0 >>= 4;
+            }
+            asm(
+                "movep.l    %[p03],(%[out],%c[i])       \n\t"
+                "movep.l    %[p03],(%[out],(%c[i]+320)) \n\t"
+                "movep.l    %[p47],(%[out],(%c[i]+8))   \n\t"
+                "movep.l    %[p47],(%[out],(%c[i]+328)) \n\t"
+                : //no outputs
+                : [out] "a" (out)
+                , [p03] "d" (plane0123)
+                , [p47] "d" (plane4567)
+                , [i] "n" (i)
+                : "memory", "cc"
+            );
         }
-        *(uint32_t*)(out) = plane01;
-        *(uint32_t*)(out+4) = plane23;
-        *(uint32_t*)(out+8) = plane45;
-        *(uint32_t*)(out+12) = plane67;
-        out += 320;
-        *(uint32_t*)(out) = plane01;
-        *(uint32_t*)(out+4) = plane23;
-        *(uint32_t*)(out+8) = plane45;
-        *(uint32_t*)(out+12) = plane67;
-        out -= 304;
+        out += 16;
 		pixels -= 16;
 	}
 }
@@ -1694,21 +1726,25 @@ static void c2p_4x_hirez(register unsigned char *out, const unsigned char *in, u
 void draw_palette_table(unsigned char *st_screen) {
     set_doom_palette(W_CacheLumpName("PLAYPAL", PU_CACHE));
     short res = Getrez();
+    boolean is8bit = res == 7;
     unsigned char buf[128+16];
 	unsigned char c = 0;
 	for (int y=0; y<128; y+=8) {
 		for (int x=0; x<128; x+=8) {
 			for (int i=0; i<8; i++) buf[x+i] = c;
             for (int i=0; i<16; i++) {
-                if (c == subset[i]) {
+                // Draw highlight around color if from palette
+                if (c == subset[i] && !is8bit) {
                     buf[x] = 4;
                     buf[x+7] = 0;
                 }
             }
 			c++;
 		}
-        for (int x=128; x<128+8; x++) buf[x] = 0;
-        for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
+        if (!is8bit) {
+            for (int x=128; x<128+8; x++) buf[x] = 0;
+            for (int x=128+8; x<128+16; x++) buf[x] = subset[y/8];
+        }
         if (res == 0) {
 		    for (int i=0; i<8; i++) c2p_1x_lorez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%4]);
         } else if (res == 1) {
@@ -1716,7 +1752,7 @@ void draw_palette_table(unsigned char *st_screen) {
         } else if (res == 2) {
 		    for (int i=0; i<8; i++) c2p_1x_hirez(st_screen + 160*(32+y+i), buf, 128+16, c2p_table[i%2]);
         } else if (res == 7) {
-		    for (int i=0; i<8; i++) c2p_1x_tt_lorez(st_screen + 640*(32+y+i), buf, 128+16);
+		    for (int i=0; i<8; i++) c2p_1x_tt_lorez(st_screen + 640*(32+y+i), buf, 128+16, c2p_tt_table);
         }
 	}
 }
@@ -1804,7 +1840,7 @@ static void c2p_screen_tt_lorez(unsigned char *out, const unsigned char *in) {
     short splitline = !zoom_allowed || viewheight == SCREENHEIGHT ? SCREENHEIGHT : SCREENHEIGHT - 32;
     if (!zoom_allowed || viewwidth > SCREENWIDTH/2) {
         for (short line = 0; line < splitline; line++ ) {
-            c2p_1x_tt_lorez(out + 640*line, in + 320*line, 320);
+            c2p_1x_tt_lorez(out + 640*line, in + 320*line, 320, c2p_tt_table);
         }
     } else if(viewwidth > SCREENWIDTH/4) {
         // 2x zoom
