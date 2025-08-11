@@ -817,7 +817,7 @@ static unsigned long c2p_4x_table[4][256][2];
 
 // Small table for C2P on the Atari TT where the table should fit in cache.
 // Converts 4 bits of a chunky pixel into a planar representation that can
-// be written into planar video memory using movep. Sets bits 7, 15, 23 and 31.
+// be written into planar video memory using movep. Sets bits 0, 8, 16 and 24.
 static uint32_t c2p_tt_table[16];
 
 static unsigned short convert_channel(unsigned char v) {
@@ -1102,10 +1102,10 @@ void init_c2p_table() {
         set_doom_palette = set_tt_doom_palette;
         for (int i=0; i<16; i++) {
             uint32_t pdata = 0;
-            if (i & 1) pdata |= 1<<31;
-            if (i & 2) pdata |= 1<<23;
-            if (i & 4) pdata |= 1<<15;
-            if (i & 8) pdata |= 1<<7;
+            if (i & 1) pdata |= 1<<24;
+            if (i & 2) pdata |= 1<<16;
+            if (i & 4) pdata |= 1<<8;
+            if (i & 8) pdata |= 1<<0;
             c2p_tt_table[i] = pdata;
         }
         // Clear screen
@@ -1278,47 +1278,144 @@ static void c2p_1x_hirez(register unsigned char *out, const unsigned char *in, u
 
 static void c2p_1x_tt_lorez(register unsigned char *out, const unsigned char *in, unsigned short pixels, uint32_t *table) {
     if (pixels < 16) return;
-    pixels -= pixels % 16;
-    const uint32_t *in4 = (uint32_t *)in;
+    uint32_t p03, p47, tmp;
+    uint32_t groups = (pixels / 16) - 1;
+    asm volatile(
+        // Loop over 16-pixel groups
+        "0:                                     \n\t"
 
-    while (pixels != 0) {
-        // First the even-indexed 8 pixels, then the odd-indexed 8 pixels.
-        #pragma GCC unroll 2
-        for(int i=0; i<2; i++) {
-            // 8 pixels each of 4 bitplanes
-            register uint32_t plane0123=0, plane4567=0;
-            // Read 8 chunky pixels from memory
-            register uint32_t c0 = *in4++, c1 = *in4++;
-            #pragma GCC unroll 0
-            for (int j=0; j<4; j++) {
-                plane0123 = (plane0123>>1) | table[c1&15];
-                c1 >>= 4;
-                plane4567 = (plane4567>>1) | table[c1&15];
-                c1 >>= 4;
-            }
-            #pragma GCC unroll 0
-            for (int j=0; j<4; j++) {
-                plane0123 = (plane0123>>1) | table[c0&15];
-                c0 >>= 4;
-                plane4567 = (plane4567>>1) | table[c0&15];
-                c0 >>= 4;
-            }
-            asm(
-                "movep.l    %[p03],(%[out],%c[i])       \n\t"
-                "movep.l    %[p03],(%[out],(%c[i]+320)) \n\t"
-                "movep.l    %[p47],(%[out],(%c[i]+8))   \n\t"
-                "movep.l    %[p47],(%[out],(%c[i]+328)) \n\t"
-                : //no outputs
-                : [out] "a" (out)
-                , [p03] "d" (plane0123)
-                , [p47] "d" (plane4567)
-                , [i] "n" (i)
-                : "memory", "cc"
-            );
-        }
-        out += 16;
-		pixels -= 16;
-	}
+        // Read 8 chunky pixels from memory
+        "movem.l    (%[in])+,%%d0-%%d1          \n\t"
+
+        // Process pixel 0
+        "rol.l      #6,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "move.l     (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "move.l     (%[table],%[tmp].w),%[p03]  \n\t"
+
+        // Process pixels 1-3
+        ".rept      3                           \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+        ".endr                                  \n\t"
+
+        // Process pixel 4
+        "rol.l      #6,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+
+        // Process pixels 5-7
+        ".rept      3                           \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+        ".endr                                  \n\t"
+
+        // Write pixels 0-7
+        "movep.l    %[p03],(%[out],0)           \n\t"
+        "movep.l    %[p03],(%[out],320)         \n\t"
+        "movep.l    %[p47],(%[out],8)           \n\t"
+        "movep.l    %[p47],(%[out],328)         \n\t"
+
+        // Read another 8 chunky pixels from memory
+        "movem.l    (%[in])+,%%d0-%%d1          \n\t"
+
+        // Process pixel 0
+        "rol.l      #6,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "move.l     (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "move.l     (%[table],%[tmp].w),%[p03]  \n\t"
+
+        // Process pixels 1-3
+        ".rept      3                           \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d0                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d0,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+        ".endr                                  \n\t"
+
+        // Process pixel 4
+        "rol.l      #6,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+
+        // Process pixels 5-7
+        ".rept      3                           \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p47],%[p47]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p47]  \n\t"
+        "rol.l      #4,%%d1                     \n\t"
+        "moveq      #60,%[tmp]                  \n\t"
+        "and.l      %%d1,%[tmp]                 \n\t"
+        "add.l      %[p03],%[p03]               \n\t"
+        "or.l       (%[table],%[tmp].w),%[p03]  \n\t"
+        ".endr                                  \n\t"
+
+        // Write pixels 0-7
+        "movep.l    %[p03],(%[out],1)           \n\t"
+        "movep.l    %[p03],(%[out],321)         \n\t"
+        "movep.l    %[p47],(%[out],9)           \n\t"
+        "movep.l    %[p47],(%[out],329)         \n\t"
+
+        // Increment counters
+        "lea        (%[out],16),%[out]          \n\t"
+
+        // Next pixel group
+        "dbra.w     %[groups],0b                \n\t"
+        : [in] "+&a" (in)
+        , [out] "+&a" (out)
+        , [groups] "+&d" (groups)
+        , [tmp] "=&d" (tmp)
+        , [p03] "=&d" (p03)
+        , [p47] "=&d" (p47)
+        : [table] "a" (table)
+        : "d0", "d1", "memory", "cc"
+    );
 }
 
 
